@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { label: 'Visão geral', href: '/' },
-  { label: 'Agentes', href: '/agents' },
   { label: 'Privacidade', href: '/privacy' },
   { label: 'Termos', href: '/terms' },
 ];

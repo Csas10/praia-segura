@@ -1,52 +1,44 @@
-import { FormEvent, useState } from 'react';
-
-const situationCards = [
-  { label: 'Maré', value: 'Baixa', tone: 'calm' },
-  { label: 'Ondas', value: 'Moderadas', tone: 'info' },
-  { label: 'Vento', value: '12 km/h', tone: 'safe' },
-  { label: 'Risco', value: 'Baixo', tone: 'safe' },
+const demoIndicators = [
+  { label: 'Estado de dados', value: 'Demonstração', tone: 'info' },
+  { label: 'Validade', value: 'Fictícia', tone: 'calm' },
+  { label: 'Origem', value: 'Exemplo', tone: 'safe' },
+  { label: 'Uso', value: 'Não oficial', tone: 'safe' },
 ];
 
 const quickActions = [
-  'Verificar aviso para a faixa de banho',
-  'Confirmar condições de vento e maré',
-  'Enviar relato de risco em 30 segundos',
+  'Consultar autoridades locais antes de entrar na água',
+  'Confirmar sinalização, guarda e condições da praia',
+  'Coletar e reportar dados com rigor e consentimento',
 ];
 
 export default function HomePage() {
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmitted(true);
-  };
-
   return (
     <>
       <section className="hero">
         <div className="container hero__grid">
           <div>
-            <p className="eyebrow">Segurança costeira em tempo real</p>
-            <h1>Decisões mais seguras começaram a ser tomadas antes de entrar na água.</h1>
+            <p className="eyebrow">Demonstração de produto</p>
+            <h1>Plataforma de apoio à segurança costeira em desenvolvimento.</h1>
             <p className="lead">
-              Acompanhe condições da praia, identifique riscos rápidos e compartilhe
-              informações úteis para quem vive e visita a costa.
+              Esta interface representa uma <strong>demonstração</strong> de produto e não usa valores
+              ao vivo de maré, vento, risco ou alertas reais. Para decisões de segurança,
+              consulte a autoridade local e sinalização oficial da praia.
             </p>
 
             <div className="hero__actions">
               <a className="button button--primary" href="#alertas">
-                Ver alertas
+                Entender a proposta
               </a>
-              <a className="button button--ghost" href="#relatar">
-                Relatar risco
+              <a className="button button--ghost" href="/privacy">
+                Ver política
               </a>
             </div>
           </div>
 
-          <div className="hero__panel" aria-label="Resumo de condições">
-            <div className="status-pill">Status: monitorado</div>
+          <div className="hero__panel" aria-label="Resumo demonstrativo">
+            <div className="status-pill">Status: demonstração</div>
             <div className="status-grid">
-              {situationCards.map((card) => (
+              {demoIndicators.map((card) => (
                 <div key={card.label} className={`stat ${card.tone}`}>
                   <span>{card.label}</span>
                   <strong>{card.value}</strong>
@@ -60,22 +52,22 @@ export default function HomePage() {
       <section id="alertas" className="section">
         <div className="container">
           <div className="section-heading">
-            <p className="eyebrow">Contexto do usuário</p>
-            <h2>O que a aplicação ajuda a decidir</h2>
+            <p className="eyebrow">O que está em desenvolvimento</p>
+            <h2>Base para validação de produto e integração com IA</h2>
           </div>
 
           <div className="feature-grid">
             <article className="feature-card">
-              <h3>Condições da água</h3>
-              <p>Maré, vento e correntes em linguagem simples para apoio rápido.</p>
+              <h3>Busca e localização</h3>
+              <p>Mapa e busca por praias com foco em dados públicos e consentimento de uso.</p>
             </article>
             <article className="feature-card">
-              <h3>Risco percebido</h3>
-              <p>Avaliação direta de nível de atenção e comportamento da costa.</p>
+              <h3>Conteúdo institucional</h3>
+              <p>Políticas, termos e áreas de documentação alinhadas à LGPD e ao uso de IA.</p>
             </article>
             <article className="feature-card">
-              <h3>Comunicação útil</h3>
-              <p>Relatos de risco ajudam a manter a praia mais informada e acolhedora.</p>
+              <h3>Integração segura</h3>
+              <p>Agentes só ativos com flag de ambiente, autenticação e controle de orçamento.</p>
             </article>
           </div>
         </div>
@@ -84,8 +76,8 @@ export default function HomePage() {
       <section className="section section--muted">
         <div className="container split-layout">
           <div>
-            <p className="eyebrow">Ações rápidas</p>
-            <h2>Atendimento ao usuário em contexto real</h2>
+            <p className="eyebrow">Boas práticas</p>
+            <h2>Uso responsável em cenários de risco</h2>
             <ul className="checklist">
               {quickActions.map((item) => (
                 <li key={item}>{item}</li>
@@ -94,63 +86,12 @@ export default function HomePage() {
           </div>
 
           <div className="callout" aria-live="polite">
-            <strong>Recomendação</strong>
+            <strong>Importante</strong>
             <p>
-              Antes de nadar, confira as condições locais e siga orientações de
-              guarda ou monitoramento da praia.
+              Nenhuma atualização nesta página substitui alertas oficiais, sinalização local,
+              ou orientação de guarda e autoridades competentes.
             </p>
           </div>
-        </div>
-      </section>
-
-      <section id="relatar" className="section">
-        <div className="container form-shell">
-          <div>
-            <p className="eyebrow">Relatar incidente</p>
-            <h2>Contribua com contexto útil para a comunidade</h2>
-          </div>
-
-          <form className="report-form" onSubmit={handleSubmit}>
-            <div className="field-grid">
-              <label>
-                Praia
-                <input name="beach" defaultValue="Praia da Costa Norte" />
-              </label>
-              <label>
-                Horário
-                <input name="time" type="time" defaultValue="09:30" />
-              </label>
-            </div>
-
-            <label>
-              Tipo de risco
-              <select name="risk" defaultValue="Ondas fortes">
-                <option>Ondas fortes</option>
-                <option>Corrente perigosa</option>
-                <option>Falta de sinalização</option>
-                <option>Outros</option>
-              </select>
-            </label>
-
-            <label>
-              Observação
-              <textarea
-                name="description"
-                rows={4}
-                defaultValue="Turistas demonstraram insegurança junto à faixa de banho neste horário."
-              />
-            </label>
-
-            <button type="submit" className="button button--primary">
-              Enviar relato
-            </button>
-
-            {submitted && (
-              <p className="success-message" role="status">
-                Relato registrado com sucesso. A comunidade receberá essa atualização.
-              </p>
-            )}
-          </form>
         </div>
       </section>
     </>

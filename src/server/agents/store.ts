@@ -11,7 +11,7 @@ async function ensureStore() {
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.access(DATA_FILE).catch(() => fs.writeFile(DATA_FILE, JSON.stringify([])));
-  } catch (err) {
+  } catch {
     // ignore
   }
 }

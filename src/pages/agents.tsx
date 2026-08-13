@@ -60,7 +60,7 @@ function AgentChat({ agentId }: { agentId: string }) {
       const res = await fetch(`/api/agents/${agentId}/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: user.text }) });
       const data = await res.json();
       setMessages((m) => [...m, { role: 'assistant', text: data.reply }]);
-    } catch (err) {
+    } catch {
       setMessages((m) => [...m, { role: 'assistant', text: 'Erro: não foi possível contactar o agente.' }]);
     }
   }

@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import helmet from 'helmet';
 import type { NextFunction, Request, Response } from 'express';
 import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
@@ -10,17 +11,27 @@ import agentsRouter from './agents/router';
 const app = express();
 const clientDir = path.resolve(process.cwd(), 'dist', 'client');
 const indexHtmlPath = path.join(clientDir, 'index.html');
+const agentsEnabled = process.env.ENABLE_AGENTS === 'true';
 
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? '1'));
 app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (req: Request, res: Response) => {
   healthRoute(req, res);
 });
 
-// Agents API
-app.use('/api/agents', agentsRouter);
+if (agentsEnabled) {
+  app.use('/api/agents', agentsRouter);
+} else {
+  app.use('/api/agents', (_req: Request, res: Response) => {
+    res.status(404).json({ ok: false, error: 'Multi-agent feature is disabled in this environment.' });
+  });
+}
 
 if (existsSync(clientDir)) {
   app.use(express.static(clientDir, { index: false }));

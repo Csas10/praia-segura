@@ -1,0 +1,1 @@
+console.info('Analytics disabled in demo mode');
