@@ -12,7 +12,7 @@ describe('Minha Praia Segura', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(/Decisões mais seguras/i)).toBeInTheDocument();
+    expect(screen.getByText(/Plataforma de apoio à segurança costeira em desenvolvimento/i)).toBeInTheDocument();
   });
 
   it('renders the privacy policy page', () => {

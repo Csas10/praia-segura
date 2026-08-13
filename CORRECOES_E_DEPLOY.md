@@ -1,6 +1,6 @@
 # Correções e implantação — Minha Praia Segura
 
-Data da revisão: 6 de agosto de 2026
+Data da revisão: 13 de agosto de 2026
 
 ## Causa da indisponibilidade
 
@@ -23,7 +23,7 @@ O pacote recebido não estava pronto para iniciar em um ambiente de contêiner:
 - quantidade de proxies confiáveis limitada por `TRUST_PROXY_HOPS` (padrão: 1);
 - Política de Privacidade e Termos de Uso integrados ao React, SSR e sitemap;
 - rota desconhecida corrigida para responder HTTP 404;
-- configuração do ESLint corrigida e testes do plugin de formatação alinhados;
+- configuração do ESLint corrigida;
 - idioma do documento HTML alterado para `pt-BR`.
 
 ## Implantação com Docker
@@ -51,13 +51,24 @@ Não fixe manualmente a porta se a hospedagem fornece `PORT` automaticamente.
 ## Validação realizada
 
 - `npm ci`: aprovado;
-- `npm run build`: aprovado (cliente e SSR);
+- `npm run lint`: aprovado;
 - `npm run type-check`: aprovado;
-- `npm run lint`: aprovado, sem erros;
-- `npm test -- --run`: 101 testes aprovados;
+- `npm test -- --run`: 2 testes aprovados;
+- `npm run build`: aprovado (cliente e SSR);
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilidades;
 - `/`, `/privacy`, `/terms` e `/api/health`: HTTP 200;
-- rota inexistente: HTTP 404;
-- inicialização de produção: sem erros nos registros.
+- rota inexistente: HTTP 404.
+
+## Decisão sobre Git
+
+| Ação | Autorização |
+| --- | --- |
+| Commit de checkpoint na branch | Permitido, se necessário para preservar trabalho |
+| Push da branch | Permitido |
+| Abrir PR como rascunho | Permitido |
+| Merge em main | Bloqueado |
+| Deploy público | Bloqueado |
+| Ativar ENABLE_AGENTS | Bloqueado |
 
 Depois do deploy, confirme que o domínio `minhapraiasegura.com.br` está ligado
 ao serviço correto e que o balanceador considera `/api/health` saudável.
