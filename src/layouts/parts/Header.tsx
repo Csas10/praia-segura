@@ -3,6 +3,9 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { label: 'Visão geral', href: '/' },
+  { label: 'Sobre', href: '/about' },
+  { label: 'Documentação', href: '/docs' },
+  { label: 'Contato', href: '/contact' },
   { label: 'Privacidade', href: '/privacy' },
   { label: 'Termos', href: '/terms' },
 ];

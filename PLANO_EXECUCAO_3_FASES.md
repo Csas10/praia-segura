@@ -1,0 +1,219 @@
+# Plano de execução em 3 fases
+
+## Restrições gerais
+
+- Não ativar `ENABLE_AGENTS`.
+- Não implementar índice de risco por IA.
+- Não adicionar dados marítimos fictícios.
+- Não criar formulário sem backend.
+- Não inserir chaves no frontend.
+- Não fazer commit, merge ou deploy.
+
+## Fase 1 — Base institucional
+
+### 1.1 Sobre
+- Objetivo: apresentar a missão, visão, origem e contexto institucional do projeto de forma clara e confiável.
+- Dependências: identidade visual, navegação institucional, conteúdo aprovado e revisão editorial.
+- Arquivos previstos: `src/pages/about.tsx`, `src/routes.tsx`, `src/layouts/parts/Header.tsx`, `src/layouts/parts/Footer.tsx`, `src/pages/index.tsx`.
+- Riscos: inconsistência de mensagem institucional, ausência de fonte e perda de confiabilidade reputacional.
+- Proteção de segurança e privacidade: nenhum dado pessoal coletado; conteúdo estático e sem interações sensíveis.
+- Testes necessários: renderização da página, navegação, links internos, revisão de texto e validação de acessibilidade básica.
+- Critério de aceite: página acessível, responsiva, sem elementos promocionais ou informativos indevidos e sem afirmações de dados em tempo real.
+- Condição de rollback: se o conteúdo não estiver alinhado ao posicionamento aprovado, reverter para a versão anterior e mantê-la apenas no nível institucional.
+
+### 1.2 Contato
+- Objetivo: disponibilizar canal de contato oficial, sem criar fluxo sem backend ou mecanismo de coleta incompatível.
+- Dependências: e-mail institucional, formulário futuro com backend, revisão de dados e política de privacidade.
+- Arquivos previstos: `src/pages/contact.tsx`, `src/routes.tsx`, `src/layouts/parts/Footer.tsx`, `src/pages/privacy.tsx`.
+- Riscos: exposição indevida de e-mail, uso inadequado de canal público, coleta sem tratativa posterior.
+- Proteção de segurança e privacidade: canal apenas de contato, sem armazenamento de mensagens sem backend e sem envio de dados sensíveis ao frontend.
+- Testes necessários: renderização, validação boa de links, responsividade, acessibilidade e mensagem de fallback.
+- Critério de aceite: página funcional e consistente com o fluxo de suporte real, sem forma de coleta de dados sem backend.
+- Condição de rollback: desativar eventual formulário e manter somente o e-mail oficial `contato@minhapraiasegura.com.br`, sem armazenamento intermediário.
+
+### 1.3 Documentação e downloads
+- Objetivo: disponibilizar documentação institucional, orientações e arquivos públicos com informação estável e revisada.
+- Dependências: estrutura de arquivos estáticos, política pública e organização documental, revisão de direitos autorais e permissões.
+- Arquivos previstos: `public/docs/`, `src/pages/docs.tsx`, `src/routes.tsx`, `src/layouts/parts/Footer.tsx`.
+- Riscos: arquivo inexistente, link quebrado, conteúdo desatualizado, política de downloads incompatível com licença e governança.
+- Proteção de segurança e privacidade: documentos públicos, sem dados pessoais, sem link a recursos dinâmicos e sem execução de scripts externos.
+- Testes necessários: validação de links, download, MIME types corretos, presença de arquivos e acessibilidade dos documentos.
+- Critério de aceite: todos os arquivos disponíveis e navegáveis, sem erros de referência e com páginas públicas e legíveis.
+- Condição de rollback: se houver inconsistência documental ou risco de contenção inadequada, remover os links e manter somente os documentos essencialmente aprovados.
+
+### 1.4 Consentimento e banner de cookies
+- Objetivo: dar transparência sobre cookies e preferências, sem coletar dados sem base legal clara.
+- Dependências: política de privacidade v1.0, decisão de consentimento, configuração de cookies essenciais e mecanismo de opt-in/opt-out.
+- Arquivos previstos: `src/components/CookieConsent.tsx`, `src/pages/privacy.tsx`, `src/pages/terms.tsx`, `src/layouts/RootLayout.tsx`, `src/App.tsx`.
+- Riscos: consentimento genérico, ausência de preferência, coleta de dados sem limite, violação de LGPD ou rastreamento não informado.
+- Proteção de segurança e privacidade: apenas cookies essenciais e consentimento explícito para recursos não essenciais; sem tracking oculto.
+- Testes necessários: aprovação de consentimento, persistência de preferência, comportamento com cookies bloqueados e cobertura de não-aceitação.
+- Critério de aceite: consentimento documentado, preferências persistentes e não há execução de rastreadores sem opt-in.
+- Condição de rollback: se houver qualquer coleta não consentida, remover o banner e manter somente cookies estritamente indispensáveis.
+
+### 1.5 SEO, acessibilidade e responsividade
+- Objetivo: melhorar indexação, usabilidade e experiência em navegadores e dispositivos sem introduzir conteúdo falso ou invasivo.
+- Dependências: `public/robots.txt`, `public/sitemap.xml`, tags de cabeçalho, meta tags, CSS responsivo e checagens de acessibilidade.
+- Arquivos previstos: `index.html`, `public/robots.txt`, `public/sitemap.xml`, `src/styles/**`, `src/layouts/**`, páginas públicas.
+- Riscos: SEO mal configurado, páginas quebradas em mobile, contraste inadequado, navegação pouco acessível.
+- Proteção de segurança e privacidade: conteúdo estático, sem scripts externos de forma não aprovada, sem coleta dinâmica de dados sensíveis.
+- Testes necessários: Lighthouse ou validação equivalente, testes de responsividade, contraste, teclado e roteamento.
+- Critério de aceite: páginas renderizam corretamente em desktop e mobile, sem regressões e com metadata apropriada.
+- Condição de rollback: se a alteração gerar regressão visual ou funcional, reverter aos ativos estáveis e manter apenas ajustes seguros e mínimos.
+
+### 1.6 Testes institucionais e regressão
+- Objetivo: cobrir as páginas públicas e fluxos básicos do piloto institucional sem acoplar comportamento de produção ainda não implementado.
+- Dependências: configuração de testes com Vitest, RTL e cobertura de rotas principais.
+- Arquivos previstos: `src/test/**`, `src/pages/**`, `src/routes.tsx`, `src/App.tsx`.
+- Riscos: testes frágeis, falsos positivos e cobertura insuficiente para páginas públicas.
+- Proteção de segurança e privacidade: testes sem dados reais, sem tokens, sem quebras de ambiente e sem uso de credenciais.
+- Testes necessários: renderização de página inicial, privacidade, termos, 404 e navegação básica.
+- Critério de aceite: 100% das rotas públicas essenciais validadas e ausência de regressão em navegação.
+- Condição de rollback: se a suíte ficar frágil ou incorreta, reduzir escopo e priorizar rotas críticas apenas.
+
+## Fase 2 — Consulta segura
+
+### 2.1 Busca de praias
+- Objetivo: permitir busca de praias no site de forma controlada, com fontes explicitadas, sem expor dados geográficos ou risco sem contexto.
+- Dependências: contrato de dados, API no servidor, decisão de dados reais/estimados, design de busca e revisão legal.
+- Arquivos previstos: `src/pages/search.tsx`, `src/server/api/**`, `src/lib/**`, `src/components/**`, `src/routes.tsx`.
+- Riscos: busca sem fonte, erro de dados, consumo indiscriminado, erro de geolocalização e disparo de requisições do frontend sem controle.
+- Proteção de segurança e privacidade: todas as chamadas para APIs externas devem ocorrer no servidor; sem envio de chaves para o cliente; sem armazenamento de localização sem consentimento.
+- Testes necessários: busca por cidade, estado, resultado vazio, timeout, erro de rede, checagem de fonte e status de dados.
+- Critério de aceite: consistência de resultados, resposta útil e mensagem clara quando dados inexistirem ou falharem.
+- Condição de rollback: se a busca não tiver fonte confiável ou puder falhar em produção sem controle, desabilitar a funcionalidade e manter a página em estado de demonstração informativa.
+
+### 2.2 Geolocalização apenas após ação do usuário
+- Objetivo: capturar geolocalização de forma explícita, de acordo com a vontade do usuário e com consentimento claro.
+- Dependências: APIs do navegador, políticas de consentimento e UX segura para geolocalização.
+- Arquivos previstos: `src/components/LocationPrompt.tsx`, `src/pages/search.tsx`, `src/pages/index.tsx`, `src/lib/location.ts`.
+- Riscos: coleta silenciosa de localização, rastreamento contínuo em segundo plano e violação de privacidade.
+- Proteção de segurança e privacidade: pedir permissão apenas em clique explícito; não armazenar em background; não persistir sem necessidade; nunca coletar sem consentimento.
+- Testes necessários: fluxo de consentimento, recusa, erro de permissões, timeout e comportamento em desktop/mobile.
+- Critério de aceite: geolocalização só ocorre após ação do usuário e sem rastreamento contínuo.
+- Condição de rollback: se a geolocalização for necessária fora do contexto de uso explícito, remover a funcionalidade até nova revisão legal.
+
+### 2.3 APIs no servidor
+- Objetivo: centralizar integrações externas no backend para reduzir risco de vazamento, uso indevido e exposição de chaves.
+- Dependências: estrutura de servidor Express, cliente HTTP seguro, rate limiting, logs e política de timeout.
+- Arquivos previstos: `src/server/**`, `src/lib/http-client.ts`, `src/server/entry.ts`.
+- Riscos: vazamento de chaves, falhas de rede, rate limiting insuficiente e consumo indevido por clientes externos.
+- Proteção de segurança e privacidade: chave somente no ambiente do servidor; limites de timeout e retry; logs sem conteúdo sensível; controle de origem e limite por IP ou token.
+- Testes necessários: requisição de sucesso, erro de rede, timeout, 429 e respostas inesperadas.
+- Critério de aceite: aplicação exige servidor para acesso externo e evita vazamento de segredos no cliente.
+- Condição de rollback: se a integração externa não puder ser segura, bloquear a rota e manter a vista pública sem a funcionalidade.
+
+### 2.4 Fontes, data/hora, cobertura e limitações
+- Objetivo: separar dados reais, estimados e demonstrativos de forma explícita para evitar interpretação indevida.
+- Dependências: fontes oficiais, contratos de dados, regras de divulgação e UX com indicação de status.
+- Arquivos previstos: `src/components/DataStatusBadge.tsx`, páginas com informação pública, documentação interna de dados e `src/pages/index.tsx`.
+- Riscos: misturar dados originados de fontes distintas, dar falsa sensação de atualização e assumir monitoramento em tempo real sem base.
+- Proteção de segurança e privacidade: nenhum dado de usuário deve ser misturado ao vínculo de origem externa sem necessidade; status claro e rastreável.
+- Testes necessários: validação de status, marcação de fonte e separação visual entre dados demonstrativos e reais.
+- Critério de aceite: cada dado exibe origem, atualização e cobertura; qualquer recurso não pronto é claramente marcado.
+- Condição de rollback: se o sistema não distinguir corretamente os dados, bloquear o trecho até a correção dos metadados e da apresentação.
+
+### 2.5 Cache, timeout e indisponibilidade
+- Objetivo: melhorar estabilidade e evitar falhas por latência ou indisponibilidade.
+- Dependências: cache de leitura, timeouts mínimos, fallback seguro e monitoramento básico de integridade.
+- Arquivos previstos: `src/lib/cache.ts`, `src/server/**`, `src/components/**`.
+- Riscos: falhas de latência, requisições em cascata, instabilidade em produção e memória excessiva.
+- Proteção de segurança e privacidade: cache somente em dados não sensíveis; sem retenção indevida de conteúdo de usuário.
+- Testes necessários: timeout, indisponibilidade, recuperação, revalidação e limpeza de cache.
+- Critério de aceite: a página continua funcional com mensagem clara quando os dados não estão disponíveis.
+- Condição de rollback: se a estratégia de cache ou timeout criar inconsistência de dados, desabilitar cache e retornar para um estado estável.
+
+### 2.6 Separação de dados reais, estimados e demonstrativos
+- Objetivo: impedir que dados de demonstração sejam confundidos com dados operacionais reais.
+- Dependências: taxa de status, marcos de dados, UI de sinalização e documentação de produto.
+- Arquivos previstos: `src/pages/index.tsx`, `src/components/StatusPill.tsx`, `src/lib/data-status.ts`, `src/pages/search.tsx`.
+- Riscos: conteúdo enganoso, apresentação com aparência oficial e má interpretação por usuários.
+- Proteção de segurança e privacidade: todos os elementos de status devem ser explícitos, não escondidos em microtexto; nenhum dado fictício deve parecer real.
+- Testes necessários: validação visual e textual em cada tela de dados, checagem de DOM e acessibilidade.
+- Critério de aceite: qualquer dado demonstrativo ou estimado contém marcação clara e acessível.
+- Condição de rollback: se a marcação não for globalmente consistente, desabilitar a exibição de dados e manter somente texto institucional.
+
+## Fase 3 — Serviços avançados
+
+### 3.1 Autenticação
+- Objetivo: permitir acesso controlado a recursos de usuário, sem abertura pública do sistema.
+- Dependências: decisão de provedor, políticas de sessão, hash de senha, ou autenticação com SSO futuro e revisão de fluxo.
+- Arquivos previstos: `src/server/auth/**`, `src/server/api/**`, `src/lib/session.ts`, `src/pages/login.tsx`.
+- Riscos: autenticação fraca, credenciais expostas, sessão roubada, contorno de fallback e senhas em texto.
+- Proteção de segurança e privacidade: uso de hash seguro, sessões com expiração, proteção de rotas e minimização de dados de usuário.
+- Testes necessários: login válido, senha inválida, expiração de sessão, bloqueio de rotas e proteção de armazenamentos.
+- Critério de aceite: somente usuários autenticados acessam áreas protegidas e o fluxo é auditável.
+- Condição de rollback: se a autenticação não atender às políticas de segurança, remover o acesso e manter somente o piloto público.
+
+### 3.2 Banco e isolamento por usuário
+- Objetivo: armazenar dados em estrutura segura e separar o conteúdo por usuário ou domínio autorizado.
+- Dependências: decisão de banco (relacional ou semiestruturado), migração de dados, políticas de acesso e governança.
+- Arquivos previstos: `src/server/db/**`, `src/server/api/**`, `src/server/models/**`, `migrations/**`.
+- Riscos: vazamento cruzado entre usuários, esquemas inadequados e ausência de retenção.
+- Proteção de segurança e privacidade: permissão por usuário, criptografia de atributos sensíveis, segredos em ambiente e revisão de leitura/escrita.
+- Testes necessários: criação de usuário, isolamento de dados, exclusão de conta, validação de acesso e backup seguro.
+- Critério de aceite: nenhum usuário acessa dados de outro usuário e o armazenamento é auditável.
+- Condição de rollback: se não houver isolamento correto, suspender o módulo e manter apenas dados públicos do piloto.
+
+### 3.3 Exclusão de conta
+- Objetivo: permitir que usuário remova seus dados conforme o princípio de privacidade e direito de eliminação.
+- Dependências: política de privacidade, fluxo de confirmação, regras de retenção e procedimento de governança.
+- Arquivos previstos: `src/pages/account-delete.tsx`, `src/server/api/user/delete.ts`, `src/server/db/**`.
+- Riscos: exclusão parcial, ausência de confirmação, retenção indevida e conflito de backup.
+- Proteção de segurança e privacidade: confirmação de identidade, exclusão de dados principais e retenção mínima em backups e logs.
+- Testes necessários: fluxo completo de exclusão, revalidação de login e verificação de remoção permanente do conteúdo.
+- Critério de aceite: usuário consegue excluir conta e dados associados sem risco de acessos remanescentes.
+- Condição de rollback: se a exclusão não for robusta, desativar o fluxo e manter o estado atual do piloto público.
+
+### 3.4 Aceite legal auditável
+- Objetivo: registrar a versão da Política de Privacidade e dos Termos aceita pelo usuário quando uma funcionalidade exigir concordância.
+- Dependências: autenticação, banco, versionamento dos documentos e histórico de vigência.
+- Dados mínimos: usuário, documento, versão, data/hora e origem do aceite.
+- Proteção: não utilizar caixas previamente marcadas e não considerar silêncio ou simples navegação como consentimento.
+- Testes: novo aceite, versão atualizada, recusa e revogação quando aplicável.
+- Critério de aceite: cada concordância necessária possui versão e evidência auditável.
+- Condição de rollback: impedir o recurso dependente sem apagar o histórico legal válido.
+
+### 3.5 Dashboards
+- Objetivo: disponibilizar visão operativa para usuários autorizados, sem expor dados internos de forma pública.
+- Dependências: autenticação, banco, filtros por usuário e revisão de qualquer dado sensível.
+- Arquivos previstos: `src/pages/dashboard.tsx`, `src/server/api/dashboard/**`, `src/components/**`.
+- Riscos: vazamento de dados internos, acessos inadequados, autorização incompleta e UX complexa.
+- Proteção de segurança e privacidade: dashboards restritos ao usuário ou a função autorizada, sem dados públicos embutidos.
+- Testes necessários: acesso autorizado, acesso negado, filtros, estados vazios e auditoria.
+- Critério de aceite: somente usuários com perfil adequado acessam dashboards, com visibilidade e organização corretas.
+- Condição de rollback: se o dashboard expuser dados sem controle, retornar à versão sem dashboard e eliminar o acesso.
+
+### 3.6 Aplicativo móvel
+- Objetivo: expandir a experiência para dispositivos móveis em uma etapa posterior e controlada, sem abrir o serviço antes da revisão de segurança.
+- Dependências: revisão da interface responsiva, backend pronto, arquitetura de API e alinhamento com políticas de privacidade.
+- Arquivos previstos: `mobile/**` ou repositório separado, integrações de API e documentação de compatibilidade.
+- Riscos: duplicação de fluxo, insegurança em dispositivos, sincronização inadequada e maior superfície de ataque.
+- Proteção de segurança e privacidade: revisão dos requisitos de armazenamento local, tokens, criptografia e autorização.
+- Testes necessários: autenticação, armazenamento seguro, sincronização e fluxo de dados sensíveis.
+- Critério de aceite: app móvel apenas após revisão de segurança, privacidade e consentimento.
+- Condição de rollback: se a segurança não for adequada, bloquear a liberação do app e manter somente o site web.
+
+### 3.7 Agentes apenas em laboratório privado
+- Objetivo: manter a exploração de agentes em ambiente privado, controlado e sem acesso público.
+- Dependências: autenticação, autorização, banco, orçamento, limites e políticas de retenção; ambiente isolado e revisão legal.
+- Arquivos previstos: `src/server/agents/**`, `src/server/auth/**`, `src/server/db/**`, `src/pages/lab/**`, configuração de ambiente.
+- Riscos: vazamento de dados, prompt injection, uso financeiro não controlado, armazenamento indevido e acesso público.
+- Proteção de segurança e privacidade: modelos permitidos definidos pelo servidor; limites de tamanho de entrada e saída; moderação; `safety_identifier` pseudonimizado; cotas por usuário e limite financeiro global; prazo de retenção e exclusão; tratamento de erros sem expor respostas internas do provedor; testes contra prompt injection; revisão humana em resultados relacionados à segurança marítima; sem `ENABLE_AGENTS` no ambiente público; nenhum acesso externo; prompts e respostas tratados com retenção controlada; logs segregados; cobrança e orçamento definidos; revisão contínua de prompts.
+- Testes necessários: autenticação, isolamento de usuário, prompt segurança, rate limiting, orçamento, logs e banco de dados com retenção definida; validação de allowlist de modelos; limites de entrada e saída; moderação; prompt injection; respostas seguras sem vazamento interno.
+- Critério de aceite: laboratório privado opera apenas para usuários autorizados e sem qualquer superfície pública.
+- Condição de rollback: se houver risco funcional ou de privacidade, remover a interface e desativar o módulo completamente.
+
+## Critérios cruzados
+
+- A Fase 2 somente começa após aprovação formal dos critérios da Fase 1.
+- A Fase 3 somente começa após estabilidade e revisão dos dados da Fase 2.
+- Cada fase deve possuir branch própria, revisão de código, backup e rollback.
+- A publicação exige lint, tipos, testes, build, auditoria de dependências e validação HTTP.
+- Ausência ou atraso de dados nunca pode ser convertido em “risco baixo”.
+- Todo dado operacional deve possuir fonte, horário, cobertura e limite de validade configurado por fonte.
+- Nenhuma funcionalidade nova deve ser liberada sem revisão de privacidade e segurança.
+- Qualquer integração externa deve obedecer a política de servidor, não frontend.
+- Nenhuma tela pode afirmar dados reais, monitoramento em tempo real, alerta oficial ou sucesso de envio sem backend funcional comprovado.
+- Qualquer decisão com risco de vida deve ser claramente marcada como informação de apoio, não como avaliação técnica oficial.
+- Em cada fase, o rollback deve ser possível sem perder a base institucional já validada do piloto.
