@@ -29,6 +29,11 @@ body {
 
 a { text-decoration: none; color: inherit; }
 
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid #f59e0b;
+  outline-offset: 3px;
+}
+
 button, input, select, textarea {
   font: inherit;
 }
@@ -288,6 +293,83 @@ h2 {
   padding: 1.6rem;
 }
 
+.cookie-banner {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+}
+
+.cookie-banner__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1rem 0;
+}
+
+.cookie-banner__inner p {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+}
+
+.cookie-banner__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.contact-card,
+.doc-item {
+  display: block;
+  width: 100%;
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--line);
+  border-radius: 1.1rem;
+  box-shadow: var(--shadow);
+  padding: 1.3rem;
+}
+
+.contact-card {
+  margin-top: 1.5rem;
+}
+
+.contact-card strong,
+.contact-card a,
+.doc-item strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.contact-card a {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.doc-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.doc-item {
+  color: var(--text);
+}
+
+.doc-item span {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .form-shell {
   display: grid;
   grid-template-columns: 0.8fr 1.2fr;
@@ -361,12 +443,21 @@ input, select, textarea {
   color: var(--muted);
 }
 
+.footer__preferences {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
 @media (max-width: 800px) {
-  .hero__grid, .feature-grid, .split-layout, .form-shell, .field-grid {
+  .hero__grid, .feature-grid, .split-layout, .form-shell, .field-grid, .info-grid {
     grid-template-columns: 1fr;
   }
 
-  .topbar__inner, .footer__inner {
+  .topbar__inner, .footer__inner, .cookie-banner__inner {
     flex-direction: column;
     justify-content: center;
     padding: 1rem 0;

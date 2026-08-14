@@ -1,0 +1,21 @@
+﻿Guia do piloto institucional
+
+Objetivo
+- apresentar a base institucional do projeto e os limites do piloto atual.
+
+Escopo atual
+- site institucional;
+- políticas públicas;
+- canal de contato oficial;
+- documentação e consentimento.
+
+Limites
+- sem agentes públicos;
+- sem risco operacional por IA;
+- sem dados marítimos reais ou fictícios como oficiais;
+- sem formulários sem backend funcional.
+
+Critérios de aceite
+- todas as páginas devem ser claras, responsivas e sem afirmações de dados operacionais sem suporte.
+- deve existir mecanismo para consultar e revisar a preferência de privacidade e contato oficial.
+- qualquer dado ausente ou divergente deve ser tratado como não confiável.

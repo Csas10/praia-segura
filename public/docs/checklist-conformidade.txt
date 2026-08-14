@@ -1,0 +1,9 @@
+﻿Checklist de conformidade
+
+- manter ENABLE_AGENTS desativado por padrão;
+- evitar dados fictícios com aparência de oficiais;
+- preservar e-mail institucional de contato;
+- manter privacidade e termos alinhados ao piloto;
+- validar SEO, acessibilidade e compartilhamento público;
+- manter formulários sem backend inativos ou ausentes;
+- não publicar integrações que exponham segredos no frontend.
