@@ -2,6 +2,7 @@
   "name": "minha-praia-segura",
   "version": "1.0.0",
   "type": "module",
+  "main": "src/server/entry.ts",
   "imports": {
     "#airo/secrets": "./export-plugins/airo-secrets.ts"
   },
