@@ -6,7 +6,9 @@ import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import healthRoute from './api/health/GET';
+import locationsSearchRoute from './api/locations/search/GET';
 import agentsRouter from './agents/router';
+import { locationsSearchLimiter } from './middleware/rate-limit';
 
 export function createApp(clientDirOverride?: string): Express {
   const app = express();
@@ -24,6 +26,10 @@ export function createApp(clientDirOverride?: string): Express {
 
   app.get('/api/health', (req: Request, res: Response) => {
     healthRoute(req, res);
+  });
+
+  app.get('/api/locations/search', locationsSearchLimiter, (req: Request, res: Response) => {
+    void locationsSearchRoute(req, res);
   });
 
   if (agentsEnabled) {

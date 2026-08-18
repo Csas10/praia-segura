@@ -1,3 +1,5 @@
+import LocationSearch from '@/components/LocationSearch';
+
 const demoIndicators = [
   { label: 'Estado de dados', value: 'Demonstração', tone: 'info' },
   { label: 'Validade', value: 'Fictícia', tone: 'calm' },
@@ -46,6 +48,22 @@ export default function HomePage() {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="busca-localidade" className="section">
+        <div className="container">
+          <div className="section-heading">
+            <p className="eyebrow">Consulta segura</p>
+            <h2>Buscar cidade ou estado</h2>
+            <p className="lead">
+              Consulta oficial de estados e municípios brasileiros via IBGE, executada pelo
+              servidor. Esta etapa ainda não inclui busca por nome de praia, condições do mar ou
+              geolocalização.
+            </p>
+          </div>
+
+          <LocationSearch />
         </div>
       </section>
 

@@ -133,6 +133,134 @@
 - Critério de aceite: qualquer dado demonstrativo ou estimado contém marcação clara e acessível.
 - Condição de rollback: se a marcação não for globalmente consistente, desabilitar a exibição de dados e manter somente texto institucional.
 
+### 2.1.1 Fase 2.1 — Fundação técnica e busca oficial por cidade/estado (implementada)
+
+Esta subseção documenta a implementação concreta da Fase 2.1, autorizada exclusivamente com a
+API oficial de Localidades do IBGE (https://servicodados.ibge.gov.br/api/docs/localidades).
+Nenhuma busca por nome de praia, condição do mar ou geolocalização foi implementada nesta etapa.
+
+#### Fonte aprovada
+
+- **IBGE Localidades** — estados e municípios brasileiros, consumidos exclusivamente pelo
+  servidor (`src/server/providers/ibge/client.ts`), sem chave de API. Dataset completo
+  (`/estados` + `/municipios`) é buscado e cacheado em memória por 24h
+  (`DATASET_TTL_MS = 24 * 60 * 60 * 1000`), com timeout de 8s por requisição
+  (`FETCH_TIMEOUT_MS = 8000`) e limite de 8MB por resposta (`MAX_RESPONSE_BYTES`).
+  Resultados de busca são limitados a 20 itens (`MAX_RESULTS`).
+  - Observação de esquema: o campo legado `microrregiao.mesorregiao.UF` não está presente em
+    todos os municípios (nulo para diversos municípios após reorganizações territoriais do
+    IBGE). O provedor usa a cadeia estável `regiao-imediata.regiao-intermediaria.UF`, presente
+    em 100% dos 5.571 municípios verificados em teste ao vivo.
+  - O cache do dataset em memória (`MemoryTtlCache`) **não é compartilhado entre instâncias
+    serverless da Vercel** — cada instância de função pode ter seu próprio cache local, o que
+    é aceitável para esta fase mas deve ser considerado ao avaliar taxa de acerto de cache em
+    produção.
+  - Rate limit (`express-rate-limit` 8.6.2, `MemoryStore` padrão — em processo/instância):
+    20 requisições/minuto por IP (`createRateLimiter(60 * 1000, 20)` em
+    `src/server/middleware/rate-limit.ts`). O contador é mantido em memória do processo Node;
+    **não há armazenamento externo compartilhado (Redis ou similar)**. Em ambiente serverless
+    da Vercel, cada instância de função possui seu próprio contador — portanto o limite de
+    20/min é **por processo/instância**, não um limite global agregado entre todas as
+    instâncias simultâneas. Esta limitação é análoga à do cache do dataset IBGE (item acima) e
+    deve ser considerada ao avaliar proteção real contra abuso em produção.
+  - Endereço do cliente: determinado por `req.ip` do Express, que respeita a configuração
+    `app.set('trust proxy', ...)` já existente em `src/server/entry.ts`
+    (`TRUST_PROXY_HOPS`, padrão `1`). Essa configuração não foi alterada nesta etapa por
+    falta de evidência documentada do número de saltos de proxy usado pela infraestrutura
+    da Vercel para esta rota; qualquer ajuste deve ser feito com base em teste específico
+    do ambiente de produção, não nesta fase.
+  - Headers de rate limit confirmados em teste real (`standardHeaders: true`, RFC draft-7):
+    `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` e, quando
+    o limite é excedido, `Retry-After`. A resposta 429 é normalizada pelo handler da rota para
+    JSON `{ ok:false, error }`, permitindo que o frontend trate o limite sem erro de parsing.
+
+#### Próxima candidata
+
+- **CPTEC/INPE** — previsão meteorológica e de ondas em XML. Uso condicionado a teste de
+  disponibilidade e validação de contrato antes de qualquer integração.
+
+#### Fontes pendentes
+
+- INMET;
+- CHM/Marinha;
+- catálogo oficial de praias;
+- balneabilidade estadual ou municipal.
+
+#### Fontes não autorizadas para produção neste momento
+
+- endpoint público do Nominatim;
+- scraping de páginas;
+- APIs sem documentação;
+- Open-Meteo gratuito para eventual uso comercial.
+
+#### Contrato do endpoint
+
+```
+GET /api/locations/search?q=<termo>
+```
+
+- `q` obrigatório, aparado (trim), entre 2 e 80 caracteres — caso contrário, HTTP 400.
+- Resposta de sucesso (200): `{ ok, query, source, sourceUrl, queriedAt, datasetFetchedAt, cache, coverage, results[] }`.
+- `results[]` contém `{ id, name, type ('state'|'municipality'), ibgeCode, stateCode, stateName, source, sourceUrl }`.
+- Indisponibilidade do provedor por timeout → HTTP 503; erro HTTP externo ou estrutura inválida → HTTP 502.
+- Nenhuma stack trace ou detalhe interno é exposto ao cliente.
+- Rate limit: 20 requisições/minuto por IP, resposta 429 em JSON (ver acima).
+
+##### Exemplos reais (capturados em servidor local com build de produção)
+
+HTTP 200 — com resultados (`?q=salvador`):
+```json
+{"ok":true,"query":"salvador","source":"IBGE - Localidades","sourceUrl":"https://servicodados.ibge.gov.br/api/docs/localidades","queriedAt":"2026-08-18T20:31:06.899Z","datasetFetchedAt":"2026-08-18T20:31:06.883Z","cache":"miss","coverage":"Estados e municípios do Brasil cadastrados na base de Localidades do IBGE.","results":[{"id":"municipio-2927408","name":"Salvador","type":"municipality","ibgeCode":"2927408","stateCode":"BA","stateName":"Bahia","source":"IBGE - Localidades","sourceUrl":"https://servicodados.ibge.gov.br/api/docs/localidades"}]}
+```
+
+HTTP 200 — sem resultados (`?q=zzznaoexiste`):
+```json
+{"ok":true,"query":"zzznaoexiste","source":"IBGE - Localidades","sourceUrl":"https://servicodados.ibge.gov.br/api/docs/localidades","queriedAt":"2026-08-18T20:31:06.956Z","datasetFetchedAt":"2026-08-18T20:31:06.883Z","cache":"hit","coverage":"Estados e municípios do Brasil cadastrados na base de Localidades do IBGE.","results":[]}
+```
+
+HTTP 400 — `q` ausente ou inválido:
+```json
+{"ok":false,"error":"O parâmetro \"q\" é obrigatório e deve ter entre 2 e 80 caracteres."}
+```
+
+HTTP 429 — limite excedido:
+```json
+{"ok":false,"error":"Muitas buscas foram realizadas em pouco tempo. Aguarde e tente novamente."}
+```
+
+Headers: `RateLimit-Policy: 20;w=60`, `RateLimit-Limit: 20`, `RateLimit-Remaining: 0`, `RateLimit-Reset: <segundos>`, `Retry-After: <segundos>`.
+
+HTTP 502 — erro HTTP externo ou estrutura inválida do provedor (mensagem genérica, sem detalhe interno):
+```json
+{"ok":false,"error":"Não foi possível obter dados do provedor de localidades (IBGE) neste momento."}
+```
+
+HTTP 503 — timeout do provedor (mensagem genérica, sem detalhe interno):
+```json
+{"ok":false,"error":"O serviço de localidades está temporariamente indisponível (tempo de resposta excedido). Tente novamente em instantes."}
+```
+
+Todas as respostas de sucesso indicam fonte (`source`), URL da fonte (`sourceUrl`), horário da
+consulta (`queriedAt`), horário de obtenção do dataset (`datasetFetchedAt`), estado de cache do
+dataset (`cache`: `"hit"` ou `"miss"`) e cobertura (`coverage`).
+
+#### Interface
+
+- Componente `src/components/LocationSearch.tsx`, integrado à página inicial em
+  `src/pages/index.tsx` sob o título honesto **"Buscar cidade ou estado"**.
+- Não solicita geolocalização. Inclui aviso de que a busca por nome de praia depende de um
+  catálogo oficial ainda não aprovado.
+- Estados cobertos: ocioso, inválido, carregando, erro/indisponível, sem resultados e sucesso
+  (com atribuição de fonte IBGE).
+
+#### Limitações registradas
+
+- Esta fase não entrega busca nominal de praias, condições do mar ou geolocalização.
+- O cache do dataset em memória e o rate limit não são compartilhados entre instâncias
+  serverless da Vercel (ver detalhes na seção "Fonte aprovada" acima).
+- `Observation<T>`/`DataQuality` (`src/server/domain/observation.ts`) foram definidos para uso
+  futuro em dados ambientais e **não são usados** para representar localidades nesta fase.
+
 ## Fase 3 — Serviços avançados
 
 ### 3.1 Autenticação
