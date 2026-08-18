@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AddressInfo } from 'net';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import CookieConsent from '../components/CookieConsent';
 import Footer from '../layouts/parts/Footer';
@@ -215,5 +215,22 @@ describe('Minha Praia Segura', () => {
     expect((await fetch(`${baseUrl}/api/agents`)).status).toBe(404);
     expect((await fetch(`${baseUrl}/api/health`)).status).toBe(200);
     expect((await fetch(`${baseUrl}/nao-existe`)).status).toBe(404);
+  });
+
+  it('renders the honest "Buscar cidade ou estado" search section without requesting geolocation', () => {
+    const geoSpy = vi.fn();
+    vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition: geoSpy } });
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: /buscar cidade ou estado/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/cidade ou estado/i)).toBeInTheDocument();
+    expect(geoSpy).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
   });
 });
