@@ -73,6 +73,14 @@ function finiteNumber(value: unknown, field: string): number {
   return number;
 }
 
+function finiteInteger(value: unknown, field: string): number {
+  const number = finiteNumber(value, field);
+  if (!Number.isInteger(number)) {
+    throw new HttpInvalidResponseError(`CPTEC field "${field}" is not an integer`);
+  }
+  return number;
+}
+
 function validDateOnly(value: unknown, field: string): string {
   const date = requiredString(value, field);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -103,6 +111,40 @@ function validWaveTimestamp(value: unknown): string {
     throw new HttpInvalidResponseError('CPTEC wave timestamp is invalid');
   }
   return parsed.toISOString();
+}
+
+function validDirection(value: unknown, field: string): string {
+  const direction = requiredString(value, field);
+  const directions = new Set([
+    'N',
+    'NNE',
+    'NE',
+    'ENE',
+    'E',
+    'ESE',
+    'SE',
+    'SSE',
+    'S',
+    'SSW',
+    'SW',
+    'WSW',
+    'W',
+    'WNW',
+    'NW',
+    'NNW',
+  ]);
+  if (!directions.has(direction)) {
+    throw new HttpInvalidResponseError(`CPTEC field "${field}" is invalid`);
+  }
+  return direction;
+}
+
+function validAgitation(value: unknown): string {
+  const agitation = requiredString(value, 'agitacao');
+  if (!['Fraco', 'Moderado', 'Forte'].includes(agitation)) {
+    throw new HttpInvalidResponseError('CPTEC field "agitacao" is invalid');
+  }
+  return agitation;
 }
 
 function requireHomologatedLocation(location: CptecLocationMapping): void {
@@ -148,7 +190,8 @@ async function fetchXml(url: string): Promise<{ document: Record<string, unknown
     }
 
     const contentType = response.headers.get('content-type') ?? '';
-    if (!/^(text|application)\/xml\b/i.test(contentType)) {
+    const charset = /(?:^|;)\s*charset\s*=\s*["']?([^;"'\s]+)/i.exec(contentType)?.[1];
+    if (!/^(text|application)\/xml\b/i.test(contentType) || charset?.toLowerCase() !== 'iso-8859-1') {
       throw new HttpInvalidResponseError('CPTEC response has an invalid Content-Type');
     }
 
@@ -163,8 +206,9 @@ async function fetchXml(url: string): Promise<{ document: Record<string, unknown
     }
 
     const xml = new TextDecoder('iso-8859-1', { fatal: true }).decode(buffer);
-    const declaration = /^\s*<\?xml[^>]*encoding\s*=\s*["']ISO-8859-1["'][^>]*\?>/i;
-    if (!declaration.test(xml)) {
+    const declaration = /^\s*<\?xml[^>]*encoding\s*=\s*["']([^"']+)["'][^>]*\?>/i;
+    const encoding = declaration.exec(xml)?.[1];
+    if (encoding?.toLowerCase() !== charset.toLowerCase()) {
       throw new HttpInvalidResponseError('CPTEC XML encoding declaration is missing or invalid');
     }
     if (/<!(?:DOCTYPE|ENTITY)\b/i.test(xml)) {
@@ -200,19 +244,28 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   const days = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
-  if (!days.length || requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
+  validDateOnly(root.atualizacao, 'atualizacao');
+  if (days.length !== 7 || requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
     throw new HttpInvalidResponseError('CPTEC weather response does not match the mapped location');
   }
 
-  return days.map((day) => {
-    const date = validDateOnly(day.dia, 'dia');
+  const dates = days.map((day) => validDateOnly(day.dia, 'dia'));
+  if (new Set(dates).size !== dates.length) {
+    throw new HttpInvalidResponseError('CPTEC weather response contains duplicate dates');
+  }
+
+  return days.map((day, index) => {
+    const date = dates[index];
     const value: WeatherDay = {
       date,
       condition: requiredString(day.tempo, 'tempo'),
-      maximumCelsius: finiteNumber(day.maxima, 'maxima'),
-      minimumCelsius: finiteNumber(day.minima, 'minima'),
+      maximumCelsius: finiteInteger(day.maxima, 'maxima'),
+      minimumCelsius: finiteInteger(day.minima, 'minima'),
       uvIndex: finiteNumber(day.iuv, 'iuv'),
     };
+    if (value.uvIndex < 0 || value.minimumCelsius > value.maximumCelsius) {
+      throw new HttpInvalidResponseError('CPTEC weather values are semantically invalid');
+    }
     return createEstimatedForecast(value, { ...metadata(url, fetchedAt), validAt: null, validDate: date });
   });
 }
@@ -221,12 +274,15 @@ function parseWave(sourceUrl: string, fetchedAt: string, period: Record<string, 
   const validAt = validWaveTimestamp(period.dia);
   const value: WavePeriod = {
     validAt,
-    agitation: requiredString(period.agitacao, 'agitacao'),
+    agitation: validAgitation(period.agitacao),
     waveHeightMeters: finiteNumber(period.altura, 'altura'),
-    waveDirection: requiredString(period.direcao, 'direcao'),
+    waveDirection: validDirection(period.direcao, 'direcao'),
     windKmh: finiteNumber(period.vento, 'vento'),
-    windDirection: requiredString(period.vento_dir, 'vento_dir'),
+    windDirection: validDirection(period.vento_dir, 'vento_dir'),
   };
+  if (value.waveHeightMeters < 0 || value.windKmh < 0) {
+    throw new HttpInvalidResponseError('CPTEC wave values are semantically invalid');
+  }
   return createEstimatedForecast(value, { ...metadata(sourceUrl, fetchedAt), validAt, validDate: null });
 }
 
@@ -247,11 +303,18 @@ export async function fetchDailyWaves(
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
-  const periods = ['manha', 'tarde', 'noite'].flatMap((key) =>
-    asArray(root[key] as Record<string, unknown> | Record<string, unknown>[] | undefined),
-  );
-  if (periods.length !== 3) {
+  validDateOnly(root.atualizacao, 'atualizacao');
+  const periodsByName = ['manha', 'tarde', 'noite'].map((key) => ({
+    key,
+    periods: asArray(root[key] as Record<string, unknown> | Record<string, unknown>[] | undefined),
+  }));
+  if (periodsByName.some(({ periods }) => periods.length !== 1)) {
     throw new HttpInvalidResponseError('CPTEC daily wave response has an invalid period count');
+  }
+  const periods = periodsByName.map(({ periods }) => periods[0]);
+  const timestamps = periods.map((period) => validWaveTimestamp(period.dia));
+  if (new Set(timestamps).size !== timestamps.length) {
+    throw new HttpInvalidResponseError('CPTEC daily wave response contains duplicate timestamps');
   }
   return periods.map((period) => parseWave(url, fetchedAt, period));
 }
@@ -261,9 +324,14 @@ export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
+  validDateOnly(root.atualizacao, 'atualizacao');
   const periods = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
   if (periods.length !== 48) {
     throw new HttpInvalidResponseError('CPTEC six-day wave response has an invalid period count');
+  }
+  const timestamps = periods.map((period) => validWaveTimestamp(period.dia));
+  if (new Set(timestamps).size !== timestamps.length) {
+    throw new HttpInvalidResponseError('CPTEC six-day wave response contains duplicate timestamps');
   }
   return periods.map((period) => parseWave(url, fetchedAt, period));
 }

@@ -1,8 +1,6 @@
 export type ForecastQuality = 'estimated' | 'unavailable';
 
-export interface Forecast<T> {
-  value: T | null;
-  quality: ForecastQuality;
+interface ForecastMetadata {
   source: 'CPTEC/INPE';
   sourceUrl: string;
   issuedAt: string | null;
@@ -14,10 +12,14 @@ export interface Forecast<T> {
   stale: boolean;
 }
 
+export type Forecast<T> =
+  | (ForecastMetadata & { value: T; quality: 'estimated' })
+  | (ForecastMetadata & { value: null; quality: 'unavailable' });
+
 export function createEstimatedForecast<T>(
   value: T,
-  metadata: Omit<Forecast<T>, 'value' | 'quality'>,
-): Forecast<T> {
+  metadata: ForecastMetadata,
+): Extract<Forecast<T>, { quality: 'estimated' }> {
   if (metadata.validAt !== null && metadata.validDate !== null) {
     throw new Error('A forecast cannot contain both validAt and validDate');
   }
@@ -25,8 +27,8 @@ export function createEstimatedForecast<T>(
 }
 
 export function createUnavailableForecast<T>(
-  metadata: Omit<Forecast<T>, 'value' | 'quality'>,
-): Forecast<T> {
+  metadata: ForecastMetadata,
+): Extract<Forecast<T>, { quality: 'unavailable' }> {
   if (metadata.validAt !== null && metadata.validDate !== null) {
     throw new Error('A forecast cannot contain both validAt and validDate');
   }
