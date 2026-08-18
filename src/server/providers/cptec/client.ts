@@ -8,6 +8,11 @@ const BASE_URL = 'https://servicos.cptec.inpe.br/XML';
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const COVERAGE = 'município/localidade costeira';
+const MIN_TEMPERATURE_CELSIUS = -80;
+const MAX_TEMPERATURE_CELSIUS = 70;
+const MAX_UV_INDEX = 20;
+const MAX_WAVE_HEIGHT_METERS = 30;
+const MAX_WIND_KMH = 300;
 
 export interface CptecLocationMapping {
   ibgeCode: string;
@@ -79,6 +84,13 @@ function finiteInteger(value: unknown, field: string): number {
     throw new HttpInvalidResponseError(`CPTEC field "${field}" is not an integer`);
   }
   return number;
+}
+
+function bounded(value: number, field: string, minimum: number, maximum: number): number {
+  if (value < minimum || value > maximum) {
+    throw new HttpInvalidResponseError(`CPTEC field "${field}" is outside the allowed range`);
+  }
+  return value;
 }
 
 function validDateOnly(value: unknown, field: string): string {
@@ -259,9 +271,19 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
     const value: WeatherDay = {
       date,
       condition: requiredString(day.tempo, 'tempo'),
-      maximumCelsius: finiteInteger(day.maxima, 'maxima'),
-      minimumCelsius: finiteInteger(day.minima, 'minima'),
-      uvIndex: finiteNumber(day.iuv, 'iuv'),
+      maximumCelsius: bounded(
+        finiteInteger(day.maxima, 'maxima'),
+        'maxima',
+        MIN_TEMPERATURE_CELSIUS,
+        MAX_TEMPERATURE_CELSIUS,
+      ),
+      minimumCelsius: bounded(
+        finiteInteger(day.minima, 'minima'),
+        'minima',
+        MIN_TEMPERATURE_CELSIUS,
+        MAX_TEMPERATURE_CELSIUS,
+      ),
+      uvIndex: bounded(finiteNumber(day.iuv, 'iuv'), 'iuv', 0, MAX_UV_INDEX),
     };
     if (value.uvIndex < 0 || value.minimumCelsius > value.maximumCelsius) {
       throw new HttpInvalidResponseError('CPTEC weather values are semantically invalid');
@@ -275,14 +297,11 @@ function parseWave(sourceUrl: string, fetchedAt: string, period: Record<string, 
   const value: WavePeriod = {
     validAt,
     agitation: validAgitation(period.agitacao),
-    waveHeightMeters: finiteNumber(period.altura, 'altura'),
+    waveHeightMeters: bounded(finiteNumber(period.altura, 'altura'), 'altura', 0, MAX_WAVE_HEIGHT_METERS),
     waveDirection: validDirection(period.direcao, 'direcao'),
-    windKmh: finiteNumber(period.vento, 'vento'),
+    windKmh: bounded(finiteNumber(period.vento, 'vento'), 'vento', 0, MAX_WIND_KMH),
     windDirection: validDirection(period.vento_dir, 'vento_dir'),
   };
-  if (value.waveHeightMeters < 0 || value.windKmh < 0) {
-    throw new HttpInvalidResponseError('CPTEC wave values are semantically invalid');
-  }
   return createEstimatedForecast(value, { ...metadata(sourceUrl, fetchedAt), validAt, validDate: null });
 }
 

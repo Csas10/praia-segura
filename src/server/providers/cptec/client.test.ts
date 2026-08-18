@@ -108,12 +108,23 @@ describe('CPTEC client', () => {
     await expect(fetchDailyWaves(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
   });
 
-  it('rejects invalid wave ranges, agitation, directions, and duplicate timestamps', async () => {
+  it('rejects invalid wave ranges, agitation, and directions', async () => {
     const period = '<dia>18-08-2026 12h Z</dia><agitacao>Calmo</agitacao><altura>-1</altura><direcao>BAD</direcao><vento>-2</vento><vento_dir>BAD</vento_dir>';
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>2026-08-18</atualizacao><manha>${period}</manha><tarde>${period.replace('12h', '18h')}</tarde><noite>${period.replace('12h', '21h')}</noite></cidade>`),
+      ),
+    );
+    await expect(fetchDailyWaves(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
+  });
+
+  it('rejects duplicate daily wave timestamps', async () => {
+    const period = '<dia>18-08-2026 12h Z</dia><agitacao>Moderado</agitacao><altura>2.3</altura><direcao>SE</direcao><vento>8.7</vento><vento_dir>SE</vento_dir>';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>2026-08-18</atualizacao><manha>${period}</manha><tarde>${period}</tarde><noite>${period}</noite></cidade>`),
       ),
     );
     await expect(fetchDailyWaves(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
@@ -153,6 +164,7 @@ describe('CPTEC client', () => {
       stale: false,
     };
     expect(createEstimatedForecast({ date: '2026-08-18' }, metadata).quality).toBe('estimated');
+    expect(() => createEstimatedForecast(null, metadata)).toThrow();
     expect(() => createEstimatedForecast({ date: '2026-08-18' }, { ...metadata, validAt: metadata.validDate })).toThrow();
   });
 

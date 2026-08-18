@@ -20,6 +20,9 @@ export function createEstimatedForecast<T>(
   value: T,
   metadata: ForecastMetadata,
 ): Extract<Forecast<T>, { quality: 'estimated' }> {
+  if (value === null) {
+    throw new Error('An estimated forecast must contain a non-null value');
+  }
   if (metadata.validAt !== null && metadata.validDate !== null) {
     throw new Error('A forecast cannot contain both validAt and validDate');
   }

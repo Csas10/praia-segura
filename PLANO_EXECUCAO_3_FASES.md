@@ -339,6 +339,30 @@ deve atribuir a fonte como “CPTEC/INPE”. Recomenda-se obter manifestação e
 publicação operacional; esta homologação não autoriza ainda exibição no frontend nem exposição
 por rota pública.
 
+### 2.2B — Fundação interna CPTEC/INPE (implementada, sem integração pública)
+
+A fundação interna foi implementada na branch `csas10-fase-2-2b-fundacao-cptec` e permanece
+restrita ao servidor. O cliente não é importado por `src/server/entry.ts`, não cria endpoint
+público, não altera o frontend e não solicita geolocalização. O mapeamento inicial contém
+somente as localidades CPTEC ↔ IBGE homologadas na seção acima.
+
+O contrato `Forecast<T>` é uma união discriminada: previsões válidas têm
+`quality: 'estimated'` e `value` não nulo; indisponibilidade tem `quality: 'unavailable'` e
+`value: null`. O cliente de baixo nível ainda lança erros tipados para timeout, XML inválido,
+resposta HTTP inválida e falta de cobertura; uma camada futura será responsável por convertê-los
+em `unavailable`.
+
+Foram implementadas validações de transporte e semântica: limite de 512 KiB; charset
+`ISO-8859-1` no header e na declaração XML; DTD/entidades externas bloqueados; sete registros
+meteorológicos com datas únicas; três períodos diários nomeados e 48 registros de ondas de seis
+dias com timestamps únicos; `atualizacao` válida; faixas conservadoras de temperatura
+(-80 to 70 °C), IUV (0--20), altura de onda (0--30 m) e vento (0--300 km/h); coerência entre
+mínima e máxima; direções da rosa dos ventos e agitação `Fraco`, `Moderado` ou `Forte`.
+
+Esta fundação foi validada com lint, type-check, build, audit sem vulnerabilidades e 48 testes
+automatizados. Ainda não entrega previsão por rota pública, não classifica dados como `real` ou
+`demonstration`, não gera índice de risco e não faz inferências sobre segurança para banho.
+
 #### Fontes pendentes
 
 - INMET;
