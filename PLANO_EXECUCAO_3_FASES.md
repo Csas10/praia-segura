@@ -228,7 +228,7 @@ campos de ondas (`dia`, `agitacao`, `altura`, `direcao`, `vento`, `vento_dir`), 
 #### Requisitos técnicos para implementação futura
 
 O charset ISO-8859-1 é requisito obrigatório. O futuro cliente não deve usar diretamente
-`Response.text()`, pois essa API pode decodificar o corpo como UTF-8 e corromper nomes como
+`Response.text()`, pois essa API decodifica o corpo como UTF-8 e pode corromper nomes como
 `Ilhéus`, `São Luís` e `Florianópolis`. A implementação deverá ler `ArrayBuffer`, aplicar limite
 máximo de bytes, validar a declaração de encoding do XML e decodificar com
 `TextDecoder('iso-8859-1', { fatal: true })` antes do parser:
@@ -303,11 +303,12 @@ Sem implementação nesta fase, o contrato ambiental futuro será:
 ```ts
 interface Forecast<T> {
   value: T | null;
-  quality: 'estimated';
+  quality: 'estimated' | 'unavailable';
   source: 'CPTEC/INPE';
   sourceUrl: string;
   issuedAt: string | null;
   validAt: string | null;
+  validDate: string | null;
   fetchedAt: string;
   coverage: string | null;
   expiresAt: string | null;
@@ -315,15 +316,19 @@ interface Forecast<T> {
 }
 ```
 
-`issuedAt` poderá ser `null` quando o CPTEC informar somente a data. `validAt` usará o horário
-UTC/Zulu informado no XML. `expiresAt` será uma política do Minha Praia Segura, não
-necessariamente um campo fornecido pelo CPTEC. `stale` será calculado a partir da validade e do
-momento atual. `coverage` deverá informar “município/localidade costeira”, sem afirmar
-cobertura de uma praia específica.
+`issuedAt` poderá ser `null` quando o CPTEC informar somente a data. `validAt` será usado para
+timestamps com timezone, como o horário UTC/Zulu das ondas. `validDate` será usado para datas
+sem horário ou timezone, como a meteorologia diária. Para meteorologia diária, a data não será
+convertida artificialmente em meia-noite UTC. `validAt` e `validDate` nunca coexistirão.
+`expiresAt` será uma política do Minha Praia Segura, não necessariamente um campo fornecido pelo
+CPTEC. `stale` será calculado a partir da validade e do momento atual. `coverage` deverá
+informar “município/localidade costeira”, sem afirmar cobertura de uma praia específica.
 
-As previsões CPTEC serão classificadas como `estimated`. Não serão classificadas como `real`,
-não gerarão índice de risco e não permitirão inferências sobre corrente de retorno ou segurança
-para banho.
+As previsões CPTEC disponíveis serão classificadas como `estimated`; ausência, resposta inválida
+ou falta de cobertura serão `unavailable`. As invariantes são: `estimated` implica `value` não
+nulo e `unavailable` implica `value` nulo. Nenhum dado CPTEC será classificado como `real` ou
+`demonstration`; falhas não serão convertidas em mar calmo ou risco baixo, nem permitirão
+inferências sobre corrente de retorno ou segurança para banho.
 
 #### Termos e status jurídico
 
