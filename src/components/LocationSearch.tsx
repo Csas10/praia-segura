@@ -64,7 +64,16 @@ export default function LocationSearch() {
 
     try {
       const response = await fetch(`/api/locations/search?q=${encodeURIComponent(trimmed)}`);
-      const body = (await response.json()) as SearchSuccessResponse | SearchErrorResponse;
+      let body: SearchSuccessResponse | SearchErrorResponse;
+
+      try {
+        body = (await response.json()) as SearchSuccessResponse | SearchErrorResponse;
+      } catch {
+        body = {
+          ok: false,
+          error: 'O serviço de busca de localidades está indisponível no momento.',
+        };
+      }
 
       // Ignore stale responses if the user submitted a newer query meanwhile.
       if (requestIdRef.current !== requestId) {
@@ -106,7 +115,7 @@ export default function LocationSearch() {
             id={inputId}
             type="search"
             name="q"
-            placeholder="Ex.: Salvador, Bahia"
+            placeholder="Ex.: Salvador ou Bahia"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             aria-describedby={statusId}

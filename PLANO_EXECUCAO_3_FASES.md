@@ -171,10 +171,8 @@ Nenhuma busca por nome de praia, condição do mar ou geolocalização foi imple
     do ambiente de produção, não nesta fase.
   - Headers de rate limit confirmados em teste real (`standardHeaders: true`, RFC draft-7):
     `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` e, quando
-    o limite é excedido, `Retry-After`. A resposta 429 usa o corpo padrão em texto simples do
-    `express-rate-limit` (`Too many requests, please try again later.`), não o formato JSON
-    `{ ok:false, error }` usado pelo restante do endpoint — comportamento real observado,
-    não alterado nesta etapa por não violar nenhum requisito aprovado.
+    o limite é excedido, `Retry-After`. A resposta 429 é normalizada pelo handler da rota para
+    JSON `{ ok:false, error }`, permitindo que o frontend trate o limite sem erro de parsing.
 
 #### Próxima candidata
 
@@ -206,7 +204,7 @@ GET /api/locations/search?q=<termo>
 - `results[]` contém `{ id, name, type ('state'|'municipality'), ibgeCode, stateCode, stateName, source, sourceUrl }`.
 - Indisponibilidade do provedor por timeout → HTTP 503; erro HTTP externo ou estrutura inválida → HTTP 502.
 - Nenhuma stack trace ou detalhe interno é exposto ao cliente.
-- Rate limit: 20 requisições/minuto por IP, resposta 429 em texto simples (ver acima).
+- Rate limit: 20 requisições/minuto por IP, resposta 429 em JSON (ver acima).
 
 ##### Exemplos reais (capturados em servidor local com build de produção)
 
@@ -225,10 +223,11 @@ HTTP 400 — `q` ausente ou inválido:
 {"ok":false,"error":"O parâmetro \"q\" é obrigatório e deve ter entre 2 e 80 caracteres."}
 ```
 
-HTTP 429 — limite excedido (corpo padrão do `express-rate-limit`, texto simples, não JSON):
+HTTP 429 — limite excedido:
+```json
+{"ok":false,"error":"Muitas buscas foram realizadas em pouco tempo. Aguarde e tente novamente."}
 ```
-Too many requests, please try again later.
-```
+
 Headers: `RateLimit-Policy: 20;w=60`, `RateLimit-Limit: 20`, `RateLimit-Remaining: 0`, `RateLimit-Reset: <segundos>`, `Retry-After: <segundos>`.
 
 HTTP 502 — erro HTTP externo ou estrutura inválida do provedor (mensagem genérica, sem detalhe interno):

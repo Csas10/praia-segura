@@ -27,6 +27,7 @@ describe('LocationSearch', () => {
 
     expect(screen.getByLabelText(/cidade ou estado/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /buscar/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ex.: Salvador ou Bahia')).toBeInTheDocument();
   });
 
   it('shows a validation message for a query shorter than 2 characters', async () => {
@@ -111,6 +112,39 @@ describe('LocationSearch', () => {
     await user.click(screen.getByRole('button', { name: /buscar/i }));
 
     expect(await screen.findByText(/serviço indisponível/i)).toBeInTheDocument();
+  });
+
+  it('renders the normalized rate-limit message from a JSON 429 response', async () => {
+    vi.mocked(global.fetch).mockReturnValue(
+      jsonResponse({
+        ok: false,
+        error: 'Muitas buscas foram realizadas em pouco tempo. Aguarde e tente novamente.',
+      }, 429),
+    );
+
+    const user = userEvent.setup();
+    render(<LocationSearch />);
+    await user.type(screen.getByLabelText(/cidade ou estado/i), 'Salvador');
+    await user.click(screen.getByRole('button', { name: /buscar/i }));
+
+    expect(await screen.findByText(/muitas buscas foram realizadas/i)).toBeInTheDocument();
+  });
+
+  it('uses a safe fallback when a proxy returns non-JSON content', async () => {
+    vi.mocked(global.fetch).mockReturnValue(
+      Promise.resolve(new Response('<html>Too many requests</html>', {
+        status: 429,
+        headers: { 'content-type': 'text/html' },
+      })),
+    );
+
+    const user = userEvent.setup();
+    render(<LocationSearch />);
+    await user.type(screen.getByLabelText(/cidade ou estado/i), 'Salvador');
+    await user.click(screen.getByRole('button', { name: /buscar/i }));
+
+    expect(await screen.findByText(/serviço indisponível/i)).toBeInTheDocument();
+    expect(screen.getByText(/serviço de busca de localidades está indisponível/i)).toBeInTheDocument();
   });
 
   it('never calls navigator.geolocation', async () => {

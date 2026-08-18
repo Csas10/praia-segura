@@ -72,12 +72,26 @@ describe('/api/locations/search rate limit', () => {
     vi.stubGlobal('fetch', mockSuccessfulFetch());
 
     const statuses: number[] = [];
+    let limitedResponse: Response | undefined;
     // The route allows 20 requests/minute per IP; issue 25 to guarantee a 429.
     for (let i = 0; i < 25; i += 1) {
       const response = await fetch(`${baseUrl}/api/locations/search?q=Salvador`);
       statuses.push(response.status);
+      if (response.status === 429) {
+        limitedResponse = response;
+      }
     }
 
     expect(statuses).toContain(429);
+    expect(limitedResponse).toBeDefined();
+    expect(limitedResponse?.headers.get('content-type')).toMatch(/application\/json/i);
+    expect(limitedResponse?.headers.get('ratelimit-limit')).toBe('20');
+    expect(limitedResponse?.headers.get('ratelimit-remaining')).toBe('0');
+    expect(limitedResponse?.headers.get('ratelimit-reset')).toBeTruthy();
+    expect(limitedResponse?.headers.get('retry-after')).toBeTruthy();
+    await expect(limitedResponse?.json()).resolves.toEqual({
+      ok: false,
+      error: 'Muitas buscas foram realizadas em pouco tempo. Aguarde e tente novamente.',
+    });
   }, 20000);
 });
