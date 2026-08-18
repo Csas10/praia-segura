@@ -179,6 +179,166 @@ Nenhuma busca por nome de praia, condição do mar ou geolocalização foi imple
 - **CPTEC/INPE** — previsão meteorológica e de ondas em XML. Uso condicionado a teste de
   disponibilidade e validação de contrato antes de qualquer integração.
 
+### 2.2A — Homologação técnica e jurídica CPTEC/INPE (concluída sem integração)
+
+Esta homologação foi executada em `2026-08-18T19:12:13-03:00`, na branch
+`csas10-fase-2-2-homologacao-cptec`, somente contra HTTPS. Nenhuma rota, componente,
+configuração Vercel ou comportamento público foi alterado. A documentação oficial consultada foi
+`https://servicos.cptec.inpe.br/XML/`.
+
+#### Endpoints oficiais e resultados observados
+
+Todos os requests usaram método `GET`, `Invoke-WebRequest` com timeout de 30--45 segundos,
+ambiente local Windows e região aproximada Brasil (UTC-03:00), tendo
+`https://servicos.cptec.inpe.br/XML` como origem. Não houve redirecionamento observado. Todas
+as respostas válidas vieram como `Content-Type: text/xml;charset=ISO-8859-1`, sem
+`Content-Encoding` HTTP; o XML declara `encoding="ISO-8859-1"`.
+
+| Produto | URL | Amostra | HTTP | Latência |
+| --- | --- | --- | --- | --- |
+| Localidades | `/listaCidades?city=<nome-sem-acentos>` | 9 solicitações: Salvador, Ilhéus, Porto Seguro, Recife, Fortaleza, Rio de Janeiro, Santos, Florianópolis e Brasília | 200 | mínimo 69 ms; máximo 314 ms |
+| Meteorologia 7 dias | `/cidade/7dias/<cptec-id>/previsao.xml` | 8 solicitações, localidades costeiras | 200 | mínimo 99 ms; máximo 115 ms |
+| Ondas diária | `/cidade/<cptec-id>/dia/0/ondas.xml` | 8 solicitações, localidades costeiras | 200 | mínimo 73 ms; máximo 273 ms |
+| Ondas 6 dias | `/cidade/<cptec-id>/todos/tempos/ondas.xml` | 8 solicitações, localidades costeiras | 200 | mínimo 83 ms; máximo 100 ms |
+
+As latências são evidências exclusivamente da janela de homologação, sem valor de SLA ou
+garantia de disponibilidade ou desempenho futuro do provedor.
+
+O endpoint de busca retornou `<cidades><cidade><nome/><uf/><id/></cidade></cidades>`. A
+documentação orienta remover acentos no parâmetro e a busca funciona como prefixo. A resposta
+não declara se a localidade é costeira.
+
+O XML de meteorologia 7 dias tem raiz `<cidade>` e campos de primeiro nível `nome`, `uf`,
+`atualizacao` e `previsao`. Cada `previsao` contém `dia`, `tempo`, `maxima`, `minima` e `iuv`.
+`dia` e `atualizacao` usam `aaaa-mm-dd`; máximas e mínimas são graus Celsius inteiros; `iuv`
+é o valor máximo diário de radiação ultravioleta; `tempo` é uma sigla CPTEC. A documentação
+não declara timezone para a data de atualização.
+
+O XML de ondas diária tem raiz `<cidade>`, `nome`, `uf`, `atualizacao` e os períodos
+`manha`, `tarde` e `noite`. Cada período contém `dia`, `agitacao`, `altura`, `direcao`,
+`vento` e `vento_dir`. `dia` usa `dd-mm-aaaa HHh Z` (UTC/Zulu), `altura` é metro decimal,
+`vento` é km/h, `agitacao` é Fraco/Moderado/Forte e as direções são siglas cardeais.
+
+O XML de ondas de 6 dias tem raiz `<cidade>`, `nome`, `uf`, `atualizacao` e vários nós
+`previsao` (8 horários por dia, dia atual mais os cinco seguintes). Cada nó contém os mesmos
+campos de ondas (`dia`, `agitacao`, `altura`, `direcao`, `vento`, `vento_dir`), com horários
+`00/03/06/09/12/15/18/21h Z` em UTC/Zulu. A data de `atualizacao` observada usa
+`aaaa-mm-dd`.
+
+#### Requisitos técnicos para implementação futura
+
+O charset ISO-8859-1 é requisito obrigatório. O futuro cliente não deve usar diretamente
+`Response.text()`, pois essa API decodifica o corpo como UTF-8 e pode corromper nomes como
+`Ilhéus`, `São Luís` e `Florianópolis`. A implementação deverá ler `ArrayBuffer`, aplicar limite
+máximo de bytes, validar a declaração de encoding do XML e decodificar com
+`TextDecoder('iso-8859-1', { fatal: true })` antes do parser:
+
+```ts
+const buffer = await response.arrayBuffer();
+
+if (buffer.byteLength > MAX_RESPONSE_BYTES) {
+  throw new HttpInvalidResponseError('CPTEC response exceeded size limit');
+}
+
+const xml = new TextDecoder('iso-8859-1', { fatal: true }).decode(buffer);
+```
+
+Deverá existir teste que confirme a preservação dos acentos. O parser XML deve manter DTD e
+entidades externas desativados, evitando XXE.
+
+HTTP 200 não significa dado semanticamente válido. A implementação futura deverá validar
+separadamente transporte (status, timeout, tamanho e `Content-Type`) e semântica (cidade, UF,
+datas, números, unidades e quantidade de registros). O parâmetro `dia` aceitará somente `0`,
+`1` ou `2`; IDs CPTEC serão aceitos somente após mapeamento homologado; `null`, `undefined`,
+`NaN` e datas inválidas nunca poderão chegar ao frontend. Resposta HTTP 200 inválida será
+tratada como falha do provedor. Localidade sem cobertura marítima resultará em
+`quality: 'unavailable'`, nunca em mar calmo ou risco baixo. Timeout deverá ser testado
+futuramente com mock e `AbortController`, sem depender de provocar lentidão real no CPTEC.
+
+Campos obrigatórios no contrato observado são os campos listados acima. Não foram encontrados
+campos opcionais adicionais nos XML da amostra; elementos ausentes devem invalidar a resposta,
+não receber valor padrão silencioso. A cobertura declarada pelo CPTEC é municípios/localidades
+com previsão meteorológica e, para ondas, localidades litorâneas cobertas pelo modelo oceânico.
+O provedor explicitamente não informa no resultado de busca se uma localidade é costeira.
+
+#### Amostra de códigos e mapeamento explícito
+
+Os identificadores CPTEC são distintos dos códigos IBGE e não podem ser associados
+silenciosamente apenas pelo nome. O mapeamento futuro deve preservar ambos os códigos, a UF,
+a fonte da associação e a evidência usada:
+
+| Localidade | CPTEC | IBGE |
+| --- | ---: | ---: |
+| Salvador/BA | 242 | 2927408 |
+| Ilhéus/BA | 2381 | 2913606 |
+| Porto Seguro/BA | 4154 | 2925303 |
+| Recife/PE | 239 | 2611606 |
+| Fortaleza/CE | 229 | 2304400 |
+| Rio de Janeiro/RJ | 241 | 3304557 |
+| Santos/SP | 4748 | 3548500 |
+| Florianópolis/SC | 228 | 4205407 |
+
+O código deve ser resolvido primeiro pelo catálogo IBGE aprovado e depois por uma associação
+explícita com o resultado CPTEC, nunca por igualdade numérica ou por nome isolado.
+
+#### Falhas, indisponibilidade e localidade não costeira
+
+- `https://servicos.cptec.inpe.br/XML/cidade/999999999/previsao.xml` respondeu HTTP 200,
+  `text/xml`, mas com `nome`, `uf`, `atualizacao`, `dia`, `tempo`, `maxima` e `minima` como
+  `null`. Isso é uma resposta inválida semanticamente e deve ser rejeitada.
+- `.../cidade/224/dia/0/ondas.xml` para Brasília respondeu HTTP 200, mas com
+  `undefined` e `00/00/0000 00:00:00`; deve ser rejeitada como não costeira/não coberta.
+- `.../cidade/224/todos/tempos/ondas.xml` para Brasília respondeu HTTP 500.
+- O caminho `.../cidade/242/dia/9/ondas.xml` respondeu HTTP 200 e entregou o mesmo formato de
+  ondas; o provedor não validou o parâmetro `dia`, portanto o cliente não deve presumir que
+  HTTP 200 significa que o parâmetro foi aceito.
+- Não foi observada indisponibilidade espontânea durante a amostra. Um timeout de cliente
+  controlado deve ser tratado como indisponibilidade/transporte, mas não foi usado para afirmar
+  uma falha do CPTEC; erros HTTP 4xx/5xx e XML inválido devem ser registrados separadamente.
+
+#### Contrato futuro proposto
+
+Sem implementação nesta fase, o contrato ambiental futuro será:
+
+```ts
+interface Forecast<T> {
+  value: T | null;
+  quality: 'estimated' | 'unavailable';
+  source: 'CPTEC/INPE';
+  sourceUrl: string;
+  issuedAt: string | null;
+  validAt: string | null;
+  validDate: string | null;
+  fetchedAt: string;
+  coverage: string | null;
+  expiresAt: string | null;
+  stale: boolean;
+}
+```
+
+`issuedAt` poderá ser `null` quando o CPTEC informar somente a data. `validAt` será usado para
+timestamps com timezone, como o horário UTC/Zulu das ondas. `validDate` será usado para datas
+sem horário ou timezone, como a meteorologia diária. Para meteorologia diária, a data não será
+convertida artificialmente em meia-noite UTC. `validAt` e `validDate` nunca coexistirão.
+`expiresAt` será uma política do Minha Praia Segura, não necessariamente um campo fornecido pelo
+CPTEC. `stale` será calculado a partir da validade e do momento atual. `coverage` deverá
+informar “município/localidade costeira”, sem afirmar cobertura de uma praia específica.
+
+As previsões CPTEC disponíveis serão classificadas como `estimated`; ausência, resposta inválida
+ou falta de cobertura serão `unavailable`. As invariantes são: `estimated` implica `value` não
+nulo e `unavailable` implica `value` nulo. Nenhum dado CPTEC será classificado como `real` ou
+`demonstration`; falhas não serão convertidas em mar calmo ou risco baixo, nem permitirão
+inferências sobre corrente de retorno ou segurança para banho.
+
+#### Termos e status jurídico
+
+A homologação técnica e sua documentação pública são permitidas. A exibição operacional dos
+dados CPTEC/INPE no site permanece condicionada à confirmação dos termos aplicáveis. Uso
+comercial ou reprodução em meios de divulgação exige autorização expressa, e toda utilização
+deve atribuir a fonte como “CPTEC/INPE”. Recomenda-se obter manifestação escrita antes da
+publicação operacional; esta homologação não autoriza ainda exibição no frontend nem exposição
+por rota pública.
+
 #### Fontes pendentes
 
 - INMET;
