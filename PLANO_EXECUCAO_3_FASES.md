@@ -363,6 +363,22 @@ Esta fundação foi validada com lint, type-check, build, audit sem vulnerabilid
 automatizados. Ainda não entrega previsão por rota pública, não classifica dados como `real` ou
 `demonstration`, não gera índice de risco e não faz inferências sobre segurança para banho.
 
+### 2.2C — Normalização interna de indisponibilidade CPTEC/INPE
+
+A camada `cptec-forecast` recebe exclusivamente códigos IBGE, resolve somente os oito
+mapeamentos homologados e converte falhas conhecidas do cliente CPTEC de baixo nível em
+`ForecastServiceResult<T>` discriminado. Sucessos preservam previsões `estimated`; falhas
+produzem `quality: 'unavailable'`, `value: null`, datas e emissão nulas, `expiresAt: null` e
+`stale: false`.
+
+Os motivos internos são `timeout`, `upstream_http`, `invalid_response`,
+`mapping_not_homologated` e `coverage_unavailable`. O resultado normalizado não expõe URL
+interna, mensagem bruta, stack trace ou detalhes de infraestrutura. Cache, expiração e cálculo
+de `stale` permanecem adiados para a Fase 2.2D, sem conversão artificial de `validDate`.
+Esta camada não é importada pelo entrypoint, não cria rota pública e não altera frontend,
+geolocalização, índices de risco, Vercel, Production ou `ENABLE_AGENTS`.
+Os testes automatizados da suíte passaram de 48 para 57 com esta camada.
+
 #### Fontes pendentes
 
 - INMET;

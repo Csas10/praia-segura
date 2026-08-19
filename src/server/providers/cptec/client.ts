@@ -14,6 +14,13 @@ const MAX_UV_INDEX = 20;
 const MAX_WAVE_HEIGHT_METERS = 30;
 const MAX_WIND_KMH = 300;
 
+export class CptecCoverageUnavailableError extends Error {
+  constructor() {
+    super('CPTEC coverage is unavailable for the mapped location');
+    this.name = 'CptecCoverageUnavailableError';
+  }
+}
+
 export interface CptecLocationMapping {
   ibgeCode: string;
   cptecCode: number;
@@ -48,6 +55,8 @@ export interface WavePeriod {
   windKmh: number;
   windDirection: string;
 }
+
+type EstimatedForecast<T> = Extract<Forecast<T>, { quality: 'estimated' }>;
 
 const parser = new XMLParser({
   allowBooleanAttributes: false,
@@ -251,14 +260,17 @@ function forecastUrl(location: CptecLocationMapping, suffix: string): string {
   return `${BASE_URL}/cidade/${suffix.replace('{id}', String(location.cptecCode))}`;
 }
 
-export async function fetchWeather7Days(location: CptecLocationMapping): Promise<Forecast<WeatherDay>[]> {
+export async function fetchWeather7Days(location: CptecLocationMapping): Promise<EstimatedForecast<WeatherDay>[]> {
   const url = forecastUrl(location, '7dias/{id}/previsao.xml');
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   const days = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
   validDateOnly(root.atualizacao, 'atualizacao');
-  if (days.length !== 7 || requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
+  if (days.length !== 7) {
     throw new HttpInvalidResponseError('CPTEC weather response does not match the mapped location');
+  }
+  if (requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
+    throw new CptecCoverageUnavailableError();
   }
 
   const dates = days.map((day) => validDateOnly(day.dia, 'dia'));
@@ -307,14 +319,14 @@ function parseWave(sourceUrl: string, fetchedAt: string, period: Record<string, 
 
 function validateWaveCity(root: Record<string, unknown>, location: CptecLocationMapping): void {
   if (requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
-    throw new HttpInvalidResponseError('CPTEC wave response does not match the mapped location');
+    throw new CptecCoverageUnavailableError();
   }
 }
 
 export async function fetchDailyWaves(
   location: CptecLocationMapping,
   day: 0 | 1 | 2 = 0,
-): Promise<Forecast<WavePeriod>[]> {
+): Promise<EstimatedForecast<WavePeriod>[]> {
   if (day !== 0 && day !== 1 && day !== 2) {
     throw new HttpInvalidResponseError('CPTEC wave day must be 0, 1, or 2');
   }
@@ -338,7 +350,7 @@ export async function fetchDailyWaves(
   return periods.map((period) => parseWave(url, fetchedAt, period));
 }
 
-export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<Forecast<WavePeriod>[]> {
+export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<EstimatedForecast<WavePeriod>[]> {
   const url = forecastUrl(location, 'todos/tempos/ondas.xml');
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
