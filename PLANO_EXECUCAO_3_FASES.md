@@ -615,3 +615,18 @@ dataset (`cache`: `"hit"` ou `"miss"`) e cobertura (`coverage`).
 - Nenhuma tela pode afirmar dados reais, monitoramento em tempo real, alerta oficial ou sucesso de envio sem backend funcional comprovado.
 - Qualquer decisão com risco de vida deve ser claramente marcada como informação de apoio, não como avaliação técnica oficial.
 - Em cada fase, o rollback deve ser possível sem perder a base institucional já validada do piloto.
+
+### 2.2E — Apresentação frontend CPTEC
+
+O frontend consulta os três produtos somente depois da seleção explícita de um município e
+do clique em **Consultar previsões**. As chamadas são feitas em paralelo com
+`Promise.allSettled`, sem geolocalização, polling, cache-busting ou persistência local.
+Uma falha individual permanece isolada das demais; consultas anteriores são canceladas
+com `AbortController`.
+
+Os tipos em `src/shared/forecast.ts` representam apenas o contrato JSON público. O bundle
+não contém códigos CPTEC, caminhos XML ou o cliente do provedor. Datas sem horário são
+renderizadas diretamente como texto e timestamps recebem indicação explícita de UTC.
+Previsões estimadas, atualizações atrasadas e indisponibilidade são estados distintos,
+com fonte, cobertura, validade e atualização exibidas. Condições meteorológicas
+desconhecidas usam o texto `Condição não descrita pela fonte`, sem inferência.

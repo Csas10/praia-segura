@@ -1,4 +1,6 @@
-import LocationSearch from '@/components/LocationSearch';
+import { useState } from 'react';
+import ForecastPanel from '@/components/ForecastPanel';
+import LocationSearch, { type LocationSearchResult } from '@/components/LocationSearch';
 
 const demoIndicators = [
   { label: 'Estado de dados', value: 'Demonstração', tone: 'info' },
@@ -14,6 +16,9 @@ const quickActions = [
 ];
 
 export default function HomePage() {
+  const [location, setLocation] = useState<LocationSearchResult | null>(null);
+  const ibgeId = location?.id.match(/\d{7}$/)?.[0] ?? null;
+
   return (
     <>
       <section className="hero">
@@ -63,7 +68,12 @@ export default function HomePage() {
             </p>
           </div>
 
-          <LocationSearch />
+          <LocationSearch onSelectMunicipality={setLocation} />
+          <ForecastPanel location={location && location.stateCode && ibgeId ? {
+            ibgeId,
+            name: location.name,
+            state: location.stateCode,
+          } : null} />
         </div>
       </section>
 
