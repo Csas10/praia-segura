@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from 'react';
 
-interface LocationSearchResult {
+export interface LocationSearchResult {
   id: string;
   name: string;
   type: 'state' | 'municipality';
@@ -40,7 +40,11 @@ function typeLabel(type: LocationSearchResult['type']): string {
  * integration. Deliberately does not search for beaches (no approved beach
  * catalog yet) and never requests geolocation.
  */
-export default function LocationSearch() {
+interface LocationSearchProps {
+  onSelectMunicipality?: (location: LocationSearchResult) => void;
+}
+
+export default function LocationSearch({ onSelectMunicipality }: LocationSearchProps) {
   const inputId = useId();
   const statusId = useId();
   const [query, setQuery] = useState('');
@@ -149,11 +153,17 @@ export default function LocationSearch() {
             <ul className="location-search__results">
               {state.results.map((result) => (
                 <li key={result.id} className="location-search__result">
-                  <strong>{result.name}</strong>
-                  <span>
-                    {typeLabel(result.type)}
-                    {result.type === 'municipality' && result.stateCode ? ` · ${result.stateCode}` : ''}
-                  </span>
+                  {result.type === 'municipality' ? (
+                    <button type="button" onClick={() => onSelectMunicipality?.(result)}>
+                      <strong>{result.name}</strong>
+                      <span>{typeLabel(result.type)}{result.stateCode ? ` · ${result.stateCode}` : ''}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <strong>{result.name}</strong>
+                      <span>{typeLabel(result.type)}</span>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
