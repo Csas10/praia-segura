@@ -8,7 +8,7 @@ export function createRateLimiter(windowMs: number, max: number) {
     standardHeaders: true,
     legacyHeaders: false,
     handler: (_req, res) => {
-      res.status(429).json({
+      res.status(429).set('Cache-Control', 'no-store').json({
         ok: false,
         error: 'Muitas buscas foram realizadas em pouco tempo. Aguarde e tente novamente.',
       });

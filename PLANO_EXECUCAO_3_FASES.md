@@ -379,6 +379,33 @@ Esta camada não é importada pelo entrypoint, não cria rota pública e não al
 geolocalização, índices de risco, Vercel, Production ou `ENABLE_AGENTS`.
 Os testes automatizados da suíte passaram de 48 para 57 com esta camada.
 
+### 2.2D — Cache e endpoint público CPTEC/INPE
+
+A integração pública foi implementada somente no servidor em
+`GET /api/forecasts?ibgeId=<codigo>&product=<produto>`, com os produtos
+`weather-7d`, `waves-daily` e `waves-6d`. A entrada aceita exclusivamente códigos IBGE
+de sete dígitos e produtos conhecidos; parâmetros duplicados, desconhecidos, códigos CPTEC,
+hostnames e URLs fornecidos pelo cliente são rejeitados.
+
+O cache é em memória por processo/instância, sem Redis, banco ou Vercel KV. Há single-flight
+por chave, formada pelo produto e pelo código CPTEC homologado. Os TTLs frescos são 10.800 s
+para meteorologia e ondas de seis dias, e 3.600 s para ondas diárias. As janelas stale
+adicionais são respectivamente 21.600 s e 10.800 s; falhas são armazenadas negativamente por
+no máximo 60 s. Previsão antiga só é preservada após tentativa de atualização e enquanto sua
+validade meteorológica e a janela stale permitirem.
+
+O DTO público não expõe código CPTEC, URL XML, mensagem bruta, stack trace ou chave de cache.
+Ele usa a página institucional pública do CPTEC/INPE como fonte, preserva `estimated` para
+dados válidos e retorna `unavailable` com `value: null` para falhas sem fallback. Respostas
+frescas usam `s-maxage=300` e `stale-while-revalidate=60`; fallback stale usa `no-store` e
+`Warning: 110`. Erros de entrada retornam 400, município sem cobertura retorna 404, falhas
+upstream sem fallback retornam 503 com `Retry-After: 60`, e o limite é de 20 requisições por
+minuto/IP com resposta JSON 429.
+
+O endpoint não altera frontend, DNS, Vercel, `ENABLE_AGENTS`, agentes, geolocalização ou
+índices de risco. A previsão não é medição em tempo real nem certificação de praia segura;
+salva-vidas, sinalização e autoridades prevalecem.
+
 #### Fontes pendentes
 
 - INMET;
