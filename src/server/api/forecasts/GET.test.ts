@@ -15,7 +15,7 @@ const forecast = {
   validAt: null,
   validDate: '2026-08-19',
   fetchedAt: '2026-08-18T23:00:00.000Z',
-  coverage: 'município/localidade costeira',
+  coverage: 'município (até 7 dias)',
   expiresAt: null,
   stale: false,
 };

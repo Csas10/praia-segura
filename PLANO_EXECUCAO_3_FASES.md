@@ -406,10 +406,12 @@ upstream sem fallback retornam 503 com `Retry-After: 60`, e o limite é de 20 re
 minuto/IP com resposta JSON 429.
 
 As datas CPTEC `atualizacao` são preservadas como `issuedDate`, sem horário ou timezone
-inventado; `issuedAt` permanece nulo nesses casos. O endpoint não altera frontend, DNS, Vercel,
-`ENABLE_AGENTS`, agentes, geolocalização ou
-índices de risco. A previsão não é medição em tempo real nem certificação de praia segura;
-salva-vidas, sinalização e autoridades prevalecem.
+inventado; `issuedAt` permanece nulo nesses casos. Para `weather-7d`, a cobertura pública
+informa “município (até 7 dias)” e preserva a quantidade real recebida: o provedor pode
+retornar seis ou sete registros. O Minha Praia Segura não completa, duplica, interpola ou
+estima o registro ausente. O endpoint não altera frontend, DNS, Vercel, `ENABLE_AGENTS`,
+agentes, geolocalização ou índices de risco. A previsão não é medição em tempo real nem
+certificação de praia segura; salva-vidas, sinalização e autoridades prevalecem.
 
 #### Re-homologação 2.2D-R1
 
@@ -430,6 +432,22 @@ meteorologia falhou como `invalid_response` e ondas como `upstream_http`. Não h
 estimated` real para os três produtos, portanto o gate operacional permanece pendente e o
 PR deve continuar Draft até nova evidência. Nenhum ajuste de parser enfraquece charset,
 XML, cardinalidade ou validação semântica para obter HTTP 200.
+
+#### Re-homologação 2.2D-R2
+
+As URLs de ondas usam exclusivamente o código CPTEC do mapeamento homologado:
+`/cidade/{id}/dia/{day}/ondas.xml` e `/cidade/{id}/todos/tempos/ondas.xml`, sempre sob
+HTTPS. Nenhum código IBGE, hostname ou URL recebido do cliente participa da construção.
+
+O horizonte meteorológico é variável: são aceitos seis ou sete registros, com datas válidas,
+únicas, em ordem crescente, espaçadas exatamente por um dia e com ao menos uma data ainda
+relevante. O produto mantém o nome `weather-7d`, mas comunica horizonte máximo de sete dias.
+
+O horizonte `waves-6d` também é móvel. São aceitos 40 a 48 registros somente quando os
+timestamps são únicos, crescentes, espaçados por três horas na grade UTC, cobrem cinco ou
+seis datas consecutivas, têm no máximo seis datas e terminam após `fetchedAt`. Horários já
+transcorridos do primeiro dia podem ser omitidos pelo provedor; nenhuma lacuna é preenchida
+localmente. A cardinalidade isolada não valida a resposta.
 
 #### Fontes pendentes
 

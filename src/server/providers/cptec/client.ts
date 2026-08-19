@@ -8,6 +8,7 @@ const BASE_URL = 'https://servicos.cptec.inpe.br/XML';
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const COVERAGE = 'município/localidade costeira';
+const WEATHER_COVERAGE = 'município (até 7 dias)';
 const MIN_TEMPERATURE_CELSIUS = -80;
 const MAX_TEMPERATURE_CELSIUS = 70;
 const MAX_UV_INDEX = 20;
@@ -180,6 +181,58 @@ function validWaveTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
+function validSixDayTimestamp(value: unknown): string {
+  const timestamp = validWaveTimestamp(value);
+  const hour = new Date(timestamp).getUTCHours();
+  if (![0, 3, 6, 9, 12, 15, 18, 21].includes(hour)) {
+    return invalid('semantic_validation', 'CPTEC six-day wave timestamp is outside the UTC grid');
+  }
+  return timestamp;
+}
+
+function validateWeatherDates(dates: string[], fetchedAt: string): void {
+  if (new Set(dates).size !== dates.length) {
+    invalid('duplicate_validity', 'CPTEC weather response contains duplicate dates');
+  }
+  for (let index = 1; index < dates.length; index += 1) {
+    const previous = Date.parse(`${dates[index - 1]}T00:00:00Z`);
+    const current = Date.parse(`${dates[index]}T00:00:00Z`);
+    if (current - previous !== 86_400_000) {
+      invalid('semantic_validation', 'CPTEC weather dates are not consecutive');
+    }
+  }
+  const today = new Date(fetchedAt);
+  if (!dates.some((date) => Date.parse(`${date}T23:59:59Z`) >= today.getTime())) {
+    invalid('semantic_validation', 'CPTEC weather forecast horizon is fully expired');
+  }
+}
+
+function validateSixDayTimestamps(timestamps: string[], fetchedAt: string): void {
+  if (new Set(timestamps).size !== timestamps.length) {
+    invalid('duplicate_validity', 'CPTEC six-day wave response contains duplicate timestamps');
+  }
+  for (let index = 1; index < timestamps.length; index += 1) {
+    if (Date.parse(timestamps[index]) - Date.parse(timestamps[index - 1]) !== 10_800_000) {
+      invalid('semantic_validation', 'CPTEC six-day wave timestamps are not three hours apart');
+    }
+  }
+  const dates = timestamps.map((timestamp) => timestamp.slice(0, 10));
+  const uniqueDates = [...new Set(dates)];
+  if (uniqueDates.length < 5 || uniqueDates.length > 6) {
+    invalid('semantic_validation', 'CPTEC six-day wave horizon must cover five or six dates');
+  }
+  for (let index = 1; index < uniqueDates.length; index += 1) {
+    const previous = Date.parse(`${uniqueDates[index - 1]}T00:00:00Z`);
+    const current = Date.parse(`${uniqueDates[index]}T00:00:00Z`);
+    if (current - previous !== 86_400_000) {
+      invalid('semantic_validation', 'CPTEC six-day wave dates are not consecutive');
+    }
+  }
+  if (Date.parse(timestamps[timestamps.length - 1]) <= Date.parse(fetchedAt)) {
+    invalid('semantic_validation', 'CPTEC six-day wave horizon is fully expired');
+  }
+}
+
 function validDirection(value: unknown, field: string): string {
   const direction = requiredString(value, field);
   const directions = new Set([
@@ -226,14 +279,19 @@ function requireHomologatedLocation(location: CptecLocationMapping): void {
   }
 }
 
-function metadata(sourceUrl: string, fetchedAt: string, issuedDate: string) {
+function metadata(
+  sourceUrl: string,
+  fetchedAt: string,
+  issuedDate: string,
+  coverage = COVERAGE,
+) {
   return {
     source: SOURCE,
     sourceUrl,
     issuedAt: null,
     issuedDate,
     fetchedAt,
-    coverage: COVERAGE,
+    coverage,
     expiresAt: null,
     stale: false,
   } as const;
@@ -316,7 +374,7 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
   const root = city(document);
   const days = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
   const issuedDate = validIsoDateOnly(root.atualizacao, 'atualizacao');
-  if (days.length !== 7) {
+  if (days.length < 6 || days.length > 7) {
     return invalid('record_count', 'CPTEC weather response has an invalid record count');
   }
   if (requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
@@ -324,9 +382,7 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
   }
 
   const dates = days.map((day) => validIsoDateOnly(day.dia, 'dia'));
-  if (new Set(dates).size !== dates.length) {
-    return invalid('duplicate_validity', 'CPTEC weather response contains duplicate dates');
-  }
+  validateWeatherDates(dates, fetchedAt);
 
   return days.map((day, index) => {
     const date = dates[index];
@@ -350,7 +406,7 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
     if (value.uvIndex < 0 || value.minimumCelsius > value.maximumCelsius) {
       throw new CptecInvalidResponseError('semantic_validation', 'CPTEC weather values are semantically invalid');
     }
-    return createEstimatedForecast(value, { ...metadata(url, fetchedAt, issuedDate), validAt: null, validDate: date });
+    return createEstimatedForecast(value, { ...metadata(url, fetchedAt, issuedDate, WEATHER_COVERAGE), validAt: null, validDate: date });
   });
 }
 
@@ -380,7 +436,7 @@ export async function fetchDailyWaves(
   if (day !== 0 && day !== 1 && day !== 2) {
     return invalid('semantic_validation', 'CPTEC wave day must be 0, 1, or 2');
   }
-  const url = forecastUrl(location, `dia/${day}/ondas.xml`);
+  const url = forecastUrl(location, `{id}/dia/${day}/ondas.xml`);
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
@@ -401,18 +457,16 @@ export async function fetchDailyWaves(
 }
 
 export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<EstimatedForecast<WavePeriod>[]> {
-  const url = forecastUrl(location, 'todos/tempos/ondas.xml');
+  const url = forecastUrl(location, '{id}/todos/tempos/ondas.xml');
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
   const issuedDate = validIsoDateOnly(root.atualizacao, 'atualizacao');
   const periods = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
-  if (periods.length !== 48) {
+  if (periods.length < 40 || periods.length > 48) {
     return invalid('record_count', 'CPTEC six-day wave response has an invalid period count');
   }
-  const timestamps = periods.map((period) => validWaveTimestamp(period.dia));
-  if (new Set(timestamps).size !== timestamps.length) {
-    return invalid('duplicate_validity', 'CPTEC six-day wave response contains duplicate timestamps');
-  }
+  const timestamps = periods.map((period) => validSixDayTimestamp(period.dia));
+  validateSixDayTimestamps(timestamps, fetchedAt);
   return periods.map((period) => parseWave(url, fetchedAt, issuedDate, period));
 }
