@@ -307,6 +307,7 @@ interface Forecast<T> {
   source: 'CPTEC/INPE';
   sourceUrl: string;
   issuedAt: string | null;
+  issuedDate: string | null;
   validAt: string | null;
   validDate: string | null;
   fetchedAt: string;
@@ -316,10 +317,12 @@ interface Forecast<T> {
 }
 ```
 
-`issuedAt` poderá ser `null` quando o CPTEC informar somente a data. `validAt` será usado para
+`issuedAt` poderá ser `null` quando o CPTEC informar um timestamp; `issuedDate` será usado quando
+o CPTEC informar somente a data de atualização. `validAt` será usado para
 timestamps com timezone, como o horário UTC/Zulu das ondas. `validDate` será usado para datas
 sem horário ou timezone, como a meteorologia diária. Para meteorologia diária, a data não será
 convertida artificialmente em meia-noite UTC. `validAt` e `validDate` nunca coexistirão.
+`issuedAt` e `issuedDate` nunca coexistirão.
 `expiresAt` será uma política do Minha Praia Segura, não necessariamente um campo fornecido pelo
 CPTEC. `stale` será calculado a partir da validade e do momento atual. `coverage` deverá
 informar “município/localidade costeira”, sem afirmar cobertura de uma praia específica.
@@ -332,12 +335,11 @@ inferências sobre corrente de retorno ou segurança para banho.
 
 #### Termos e status jurídico
 
-A homologação técnica e sua documentação pública são permitidas. A exibição operacional dos
-dados CPTEC/INPE no site permanece condicionada à confirmação dos termos aplicáveis. Uso
-comercial ou reprodução em meios de divulgação exige autorização expressa, e toda utilização
-deve atribuir a fonte como “CPTEC/INPE”. Recomenda-se obter manifestação escrita antes da
-publicação operacional; esta homologação não autoriza ainda exibição no frontend nem exposição
-por rota pública.
+A homologação técnica, sua documentação pública e a divulgação operacional foram autorizadas por
+manifestação escrita do CPTEC/INPE. Uso comercial ou reprodução em meios de divulgação exige
+autorização expressa, e toda utilização deve atribuir a fonte como “CPTEC/INPE”. Nenhuma
+correspondência, nome, e-mail ou anexo privado é publicado, e a autorização não é apresentada
+como endosso institucional ao Minha Praia Segura.
 
 ### 2.2B — Fundação interna CPTEC/INPE (implementada, sem integração pública)
 
@@ -378,6 +380,74 @@ de `stale` permanecem adiados para a Fase 2.2D, sem conversão artificial de `va
 Esta camada não é importada pelo entrypoint, não cria rota pública e não altera frontend,
 geolocalização, índices de risco, Vercel, Production ou `ENABLE_AGENTS`.
 Os testes automatizados da suíte passaram de 48 para 57 com esta camada.
+
+### 2.2D — Cache e endpoint público CPTEC/INPE
+
+A integração pública foi implementada somente no servidor em
+`GET /api/forecasts?ibgeId=<codigo>&product=<produto>`, com os produtos
+`weather-7d`, `waves-daily` e `waves-6d`. A entrada aceita exclusivamente códigos IBGE
+de sete dígitos e produtos conhecidos; parâmetros duplicados, desconhecidos, códigos CPTEC,
+hostnames e URLs fornecidos pelo cliente são rejeitados.
+
+O cache é em memória por processo/instância, sem Redis, banco ou Vercel KV. Há single-flight
+por chave, formada pelo produto e pelo código CPTEC homologado. Os TTLs frescos são 10.800 s
+para meteorologia e ondas de seis dias, e 3.600 s para ondas diárias. As janelas stale
+adicionais são respectivamente 21.600 s e 10.800 s; falhas são armazenadas negativamente por
+no máximo 60 s. Após falha de atualização, `nextRefreshAt` aplica backoff de 60 s sem
+substituir a última previsão válida. Previsão antiga só é preservada após tentativa de atualização
+e enquanto sua validade meteorológica e a janela stale permitirem.
+
+O DTO público não expõe código CPTEC, URL XML, mensagem bruta, stack trace ou chave de cache.
+Ele usa a página institucional pública do CPTEC/INPE como fonte, preserva `estimated` para
+dados válidos e retorna `unavailable` com `value: null` para falhas sem fallback. Respostas
+frescas usam `s-maxage=300` e `stale-while-revalidate=60`; fallback stale usa `no-store` e
+`Warning: 110`. Erros de entrada retornam 400, município sem cobertura retorna 404, falhas
+upstream sem fallback retornam 503 com `Retry-After: 60`, e o limite é de 20 requisições por
+minuto/IP com resposta JSON 429.
+
+As datas CPTEC `atualizacao` são preservadas como `issuedDate`, sem horário ou timezone
+inventado; `issuedAt` permanece nulo nesses casos. Para `weather-7d`, a cobertura pública
+informa “município (até 7 dias)” e preserva a quantidade real recebida: o provedor pode
+retornar seis ou sete registros. O Minha Praia Segura não completa, duplica, interpola ou
+estima o registro ausente. O endpoint não altera frontend, DNS, Vercel, `ENABLE_AGENTS`,
+agentes, geolocalização ou índices de risco. A previsão não é medição em tempo real nem
+certificação de praia segura; salva-vidas, sinalização e autoridades prevalecem.
+
+#### Re-homologação 2.2D-R1
+
+Os formatos de `atualizacao` são validados por produto: `weather-7d` e `waves-6d`
+exigem `YYYY-MM-DD`; `waves-daily` exige `DD-MM-YYYY` e normaliza o resultado para
+`issuedDate` em `YYYY-MM-DD`. Nenhum produto converte essa data em horário, timezone ou
+`issuedAt`. Datas inexistentes, nulas ou em formato invertido são rejeitadas.
+
+Falhas de resposta inválida mantêm o motivo público `invalid_response`, mas carregam
+internamente somente uma etapa sanitizada entre `content_type`, `charset`,
+`encoding_declaration`, `response_size`, `xml_syntax`, `root_missing`, `location_mismatch`,
+`update_date`, `record_count`, `duplicate_validity`, `field_missing`, `field_range` e
+`semantic_validation`. Esses subcódigos não são expostos no DTO, nem incluem XML, URL,
+stack trace ou mensagem bruta.
+
+A matriz real reduzida de re-homologação confirmou a indisponibilidade atual do provedor:
+meteorologia falhou como `invalid_response` e ondas como `upstream_http`. Não houve `200
+estimated` real para os três produtos, portanto o gate operacional permanece pendente e o
+PR deve continuar Draft até nova evidência. Nenhum ajuste de parser enfraquece charset,
+XML, cardinalidade ou validação semântica para obter HTTP 200.
+
+#### Re-homologação 2.2D-R2
+
+As URLs de ondas usam exclusivamente o código CPTEC do mapeamento homologado:
+`/cidade/{id}/dia/{day}/ondas.xml` e `/cidade/{id}/todos/tempos/ondas.xml`, sempre sob
+HTTPS. Nenhum código IBGE, hostname ou URL recebido do cliente participa da construção.
+
+O horizonte meteorológico é variável: são aceitos seis ou sete registros, com datas válidas,
+únicas, em ordem crescente, espaçadas exatamente por um dia e com ao menos uma data ainda
+relevante. O produto mantém o nome `weather-7d`, mas comunica horizonte máximo de sete dias.
+
+O horizonte `waves-6d` também é móvel. São aceitos 40 a 48 registros somente quando os
+timestamps são únicos, crescentes, espaçados por três horas na grade UTC, cobrem cinco ou
+seis datas consecutivas, têm no máximo seis datas e terminam após `fetchedAt`. Horários já
+transcorridos do primeiro dia podem ser omitidos pelo provedor; nenhuma lacuna é preenchida
+localmente. A cardinalidade isolada não valida a resposta.
 
 #### Fontes pendentes
 

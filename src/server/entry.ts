@@ -9,6 +9,8 @@ import healthRoute from './api/health/GET';
 import locationsSearchRoute from './api/locations/search/GET';
 import agentsRouter from './agents/router';
 import { locationsSearchLimiter } from './middleware/rate-limit';
+import forecastsRoute from './api/forecasts/GET';
+import { createRateLimiter } from './middleware/rate-limit';
 
 export function createApp(clientDirOverride?: string): Express {
   const app = express();
@@ -30,6 +32,10 @@ export function createApp(clientDirOverride?: string): Express {
 
   app.get('/api/locations/search', locationsSearchLimiter, (req: Request, res: Response) => {
     void locationsSearchRoute(req, res);
+  });
+
+  app.get('/api/forecasts', createRateLimiter(60 * 1000, 20), (req: Request, res: Response) => {
+    void forecastsRoute(req, res);
   });
 
   if (agentsEnabled) {

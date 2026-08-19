@@ -8,11 +8,41 @@ const BASE_URL = 'https://servicos.cptec.inpe.br/XML';
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const COVERAGE = 'município/localidade costeira';
+const WEATHER_COVERAGE = 'município (até 7 dias)';
 const MIN_TEMPERATURE_CELSIUS = -80;
 const MAX_TEMPERATURE_CELSIUS = 70;
 const MAX_UV_INDEX = 20;
 const MAX_WAVE_HEIGHT_METERS = 30;
 const MAX_WIND_KMH = 300;
+
+export type CptecInvalidResponseStage =
+  | 'content_type'
+  | 'charset'
+  | 'encoding_declaration'
+  | 'response_size'
+  | 'xml_syntax'
+  | 'root_missing'
+  | 'location_mismatch'
+  | 'update_date'
+  | 'record_count'
+  | 'duplicate_validity'
+  | 'field_missing'
+  | 'field_range'
+  | 'semantic_validation';
+
+export class CptecInvalidResponseError extends HttpInvalidResponseError {
+  constructor(
+    readonly stage: CptecInvalidResponseStage,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CptecInvalidResponseError';
+  }
+}
+
+function invalid(stage: CptecInvalidResponseStage, message: string): never {
+  throw new CptecInvalidResponseError(stage, message);
+}
 
 export class CptecCoverageUnavailableError extends Error {
   constructor() {
@@ -73,7 +103,7 @@ function asArray<T>(value: T | T[] | undefined): T[] {
 
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim() === '' || /^(null|undefined)$/i.test(value.trim())) {
-    throw new HttpInvalidResponseError(`CPTEC field "${field}" is invalid`);
+    return invalid('field_missing', `CPTEC field "${field}" is invalid`);
   }
   return value.trim();
 }
@@ -82,7 +112,7 @@ function finiteNumber(value: unknown, field: string): number {
   requiredString(value, field);
   const number = Number(value);
   if (!Number.isFinite(number)) {
-    throw new HttpInvalidResponseError(`CPTEC field "${field}" is invalid`);
+    return invalid('semantic_validation', `CPTEC field "${field}" is invalid`);
   }
   return number;
 }
@@ -90,35 +120,52 @@ function finiteNumber(value: unknown, field: string): number {
 function finiteInteger(value: unknown, field: string): number {
   const number = finiteNumber(value, field);
   if (!Number.isInteger(number)) {
-    throw new HttpInvalidResponseError(`CPTEC field "${field}" is not an integer`);
+    return invalid('semantic_validation', `CPTEC field "${field}" is not an integer`);
   }
   return number;
 }
 
 function bounded(value: number, field: string, minimum: number, maximum: number): number {
   if (value < minimum || value > maximum) {
-    throw new HttpInvalidResponseError(`CPTEC field "${field}" is outside the allowed range`);
+    return invalid('field_range', `CPTEC field "${field}" is outside the allowed range`);
   }
   return value;
 }
 
-function validDateOnly(value: unknown, field: string): string {
+function validIsoDateOnly(value: unknown, field: string): string {
   const date = requiredString(value, field);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new HttpInvalidResponseError(`CPTEC field "${field}" is invalid`);
+    return invalid('update_date', `CPTEC field "${field}" is invalid`);
   }
   const parsed = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
-    throw new HttpInvalidResponseError(`CPTEC field "${field}" is invalid`);
+    return invalid('update_date', `CPTEC field "${field}" is invalid`);
   }
   return date;
+}
+
+function validDailyWaveUpdateDate(value: unknown): string {
+  const date = requiredString(value, 'atualizacao');
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(date);
+  if (!match) return invalid('update_date', 'CPTEC daily wave update date is invalid');
+  const [, day, month, year] = match;
+  const parsed = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  if (
+    Number.isNaN(parsed.getTime())
+    || parsed.getUTCDate() !== Number(day)
+    || parsed.getUTCMonth() + 1 !== Number(month)
+    || parsed.getUTCFullYear() !== Number(year)
+  ) {
+    return invalid('update_date', 'CPTEC daily wave update date is invalid');
+  }
+  return `${year}-${month}-${day}`;
 }
 
 function validWaveTimestamp(value: unknown): string {
   const timestamp = requiredString(value, 'dia');
   const match = /^(\d{2})-(\d{2})-(\d{4}) (\d{2})h Z$/.exec(timestamp);
   if (!match) {
-    throw new HttpInvalidResponseError('CPTEC wave timestamp is invalid');
+    return invalid('semantic_validation', 'CPTEC wave timestamp is invalid');
   }
   const [, day, month, year, hour] = match;
   const parsed = new Date(`${year}-${month}-${day}T${hour}:00:00Z`);
@@ -129,9 +176,61 @@ function validWaveTimestamp(value: unknown): string {
     parsed.getUTCFullYear() !== Number(year) ||
     parsed.getUTCHours() !== Number(hour)
   ) {
-    throw new HttpInvalidResponseError('CPTEC wave timestamp is invalid');
+    return invalid('semantic_validation', 'CPTEC wave timestamp is invalid');
   }
   return parsed.toISOString();
+}
+
+function validSixDayTimestamp(value: unknown): string {
+  const timestamp = validWaveTimestamp(value);
+  const hour = new Date(timestamp).getUTCHours();
+  if (![0, 3, 6, 9, 12, 15, 18, 21].includes(hour)) {
+    return invalid('semantic_validation', 'CPTEC six-day wave timestamp is outside the UTC grid');
+  }
+  return timestamp;
+}
+
+function validateWeatherDates(dates: string[], fetchedAt: string): void {
+  if (new Set(dates).size !== dates.length) {
+    invalid('duplicate_validity', 'CPTEC weather response contains duplicate dates');
+  }
+  for (let index = 1; index < dates.length; index += 1) {
+    const previous = Date.parse(`${dates[index - 1]}T00:00:00Z`);
+    const current = Date.parse(`${dates[index]}T00:00:00Z`);
+    if (current - previous !== 86_400_000) {
+      invalid('semantic_validation', 'CPTEC weather dates are not consecutive');
+    }
+  }
+  const today = new Date(fetchedAt);
+  if (!dates.some((date) => Date.parse(`${date}T23:59:59Z`) >= today.getTime())) {
+    invalid('semantic_validation', 'CPTEC weather forecast horizon is fully expired');
+  }
+}
+
+function validateSixDayTimestamps(timestamps: string[], fetchedAt: string): void {
+  if (new Set(timestamps).size !== timestamps.length) {
+    invalid('duplicate_validity', 'CPTEC six-day wave response contains duplicate timestamps');
+  }
+  for (let index = 1; index < timestamps.length; index += 1) {
+    if (Date.parse(timestamps[index]) - Date.parse(timestamps[index - 1]) !== 10_800_000) {
+      invalid('semantic_validation', 'CPTEC six-day wave timestamps are not three hours apart');
+    }
+  }
+  const dates = timestamps.map((timestamp) => timestamp.slice(0, 10));
+  const uniqueDates = [...new Set(dates)];
+  if (uniqueDates.length < 5 || uniqueDates.length > 6) {
+    invalid('semantic_validation', 'CPTEC six-day wave horizon must cover five or six dates');
+  }
+  for (let index = 1; index < uniqueDates.length; index += 1) {
+    const previous = Date.parse(`${uniqueDates[index - 1]}T00:00:00Z`);
+    const current = Date.parse(`${uniqueDates[index]}T00:00:00Z`);
+    if (current - previous !== 86_400_000) {
+      invalid('semantic_validation', 'CPTEC six-day wave dates are not consecutive');
+    }
+  }
+  if (Date.parse(timestamps[timestamps.length - 1]) <= Date.parse(fetchedAt)) {
+    invalid('semantic_validation', 'CPTEC six-day wave horizon is fully expired');
+  }
 }
 
 function validDirection(value: unknown, field: string): string {
@@ -155,7 +254,7 @@ function validDirection(value: unknown, field: string): string {
     'NNW',
   ]);
   if (!directions.has(direction)) {
-    throw new HttpInvalidResponseError(`CPTEC field "${field}" is invalid`);
+    return invalid('semantic_validation', `CPTEC field "${field}" is invalid`);
   }
   return direction;
 }
@@ -163,7 +262,7 @@ function validDirection(value: unknown, field: string): string {
 function validAgitation(value: unknown): string {
   const agitation = requiredString(value, 'agitacao');
   if (!['Fraco', 'Moderado', 'Forte'].includes(agitation)) {
-    throw new HttpInvalidResponseError('CPTEC field "agitacao" is invalid');
+    return invalid('semantic_validation', 'CPTEC field "agitacao" is invalid');
   }
   return agitation;
 }
@@ -176,17 +275,23 @@ function requireHomologatedLocation(location: CptecLocationMapping): void {
     approved.stateCode !== location.stateCode ||
     approved.name !== location.name
   ) {
-    throw new HttpInvalidResponseError('CPTEC location mapping is not homologated');
+    return invalid('location_mismatch', 'CPTEC location mapping is not homologated');
   }
 }
 
-function metadata(sourceUrl: string, fetchedAt: string) {
+function metadata(
+  sourceUrl: string,
+  fetchedAt: string,
+  issuedDate: string,
+  coverage = COVERAGE,
+) {
   return {
     source: SOURCE,
     sourceUrl,
     issuedAt: null,
+    issuedDate,
     fetchedAt,
-    coverage: COVERAGE,
+    coverage,
     expiresAt: null,
     stale: false,
   } as const;
@@ -212,33 +317,36 @@ async function fetchXml(url: string): Promise<{ document: Record<string, unknown
 
     const contentType = response.headers.get('content-type') ?? '';
     const charset = /(?:^|;)\s*charset\s*=\s*["']?([^;"'\s]+)/i.exec(contentType)?.[1];
-    if (!/^(text|application)\/xml\b/i.test(contentType) || charset?.toLowerCase() !== 'iso-8859-1') {
-      throw new HttpInvalidResponseError('CPTEC response has an invalid Content-Type');
+    if (!/^(text|application)\/xml\b/i.test(contentType)) {
+      throw new CptecInvalidResponseError('content_type', 'CPTEC response has an invalid Content-Type');
+    }
+    if (charset?.toLowerCase() !== 'iso-8859-1') {
+      throw new CptecInvalidResponseError('charset', 'CPTEC response has an invalid charset');
     }
 
     const contentLength = response.headers.get('content-length');
     if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES) {
-      throw new HttpInvalidResponseError('CPTEC response exceeds the allowed size');
+      throw new CptecInvalidResponseError('response_size', 'CPTEC response exceeds the allowed size');
     }
 
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > MAX_RESPONSE_BYTES) {
-      throw new HttpInvalidResponseError('CPTEC response exceeds the allowed size');
+      throw new CptecInvalidResponseError('response_size', 'CPTEC response exceeds the allowed size');
     }
 
     const xml = new TextDecoder('iso-8859-1', { fatal: true }).decode(buffer);
     const declaration = /^\s*<\?xml[^>]*encoding\s*=\s*["']([^"']+)["'][^>]*\?>/i;
     const encoding = declaration.exec(xml)?.[1];
     if (encoding?.toLowerCase() !== charset.toLowerCase()) {
-      throw new HttpInvalidResponseError('CPTEC XML encoding declaration is missing or invalid');
+      throw new CptecInvalidResponseError('encoding_declaration', 'CPTEC XML encoding declaration is missing or invalid');
     }
     if (/<!(?:DOCTYPE|ENTITY)\b/i.test(xml)) {
-      throw new HttpInvalidResponseError('CPTEC XML DTD and external entities are not allowed');
+      throw new CptecInvalidResponseError('xml_syntax', 'CPTEC XML DTD and external entities are not allowed');
     }
 
     const validation = XMLValidator.validate(xml);
     if (validation !== true) {
-      throw new HttpInvalidResponseError('CPTEC response is not valid XML');
+      throw new CptecInvalidResponseError('xml_syntax', 'CPTEC response is not valid XML');
     }
 
     return { document: parser.parse(xml) as Record<string, unknown>, fetchedAt: new Date().toISOString() };
@@ -250,7 +358,7 @@ async function fetchXml(url: string): Promise<{ document: Record<string, unknown
 function city(document: Record<string, unknown>): Record<string, unknown> {
   const value = document.cidade;
   if (!value || typeof value !== 'object') {
-    throw new HttpInvalidResponseError('CPTEC response does not contain a cidade node');
+    throw new CptecInvalidResponseError('root_missing', 'CPTEC response does not contain a cidade node');
   }
   return value as Record<string, unknown>;
 }
@@ -265,18 +373,16 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   const days = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
-  validDateOnly(root.atualizacao, 'atualizacao');
-  if (days.length !== 7) {
-    throw new HttpInvalidResponseError('CPTEC weather response does not match the mapped location');
+  const issuedDate = validIsoDateOnly(root.atualizacao, 'atualizacao');
+  if (days.length < 6 || days.length > 7) {
+    return invalid('record_count', 'CPTEC weather response has an invalid record count');
   }
   if (requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
-    throw new CptecCoverageUnavailableError();
+    return invalid('location_mismatch', 'CPTEC response location does not match the mapped location');
   }
 
-  const dates = days.map((day) => validDateOnly(day.dia, 'dia'));
-  if (new Set(dates).size !== dates.length) {
-    throw new HttpInvalidResponseError('CPTEC weather response contains duplicate dates');
-  }
+  const dates = days.map((day) => validIsoDateOnly(day.dia, 'dia'));
+  validateWeatherDates(dates, fetchedAt);
 
   return days.map((day, index) => {
     const date = dates[index];
@@ -298,13 +404,13 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
       uvIndex: bounded(finiteNumber(day.iuv, 'iuv'), 'iuv', 0, MAX_UV_INDEX),
     };
     if (value.uvIndex < 0 || value.minimumCelsius > value.maximumCelsius) {
-      throw new HttpInvalidResponseError('CPTEC weather values are semantically invalid');
+      throw new CptecInvalidResponseError('semantic_validation', 'CPTEC weather values are semantically invalid');
     }
-    return createEstimatedForecast(value, { ...metadata(url, fetchedAt), validAt: null, validDate: date });
+    return createEstimatedForecast(value, { ...metadata(url, fetchedAt, issuedDate, WEATHER_COVERAGE), validAt: null, validDate: date });
   });
 }
 
-function parseWave(sourceUrl: string, fetchedAt: string, period: Record<string, unknown>) {
+function parseWave(sourceUrl: string, fetchedAt: string, issuedDate: string, period: Record<string, unknown>) {
   const validAt = validWaveTimestamp(period.dia);
   const value: WavePeriod = {
     validAt,
@@ -314,12 +420,12 @@ function parseWave(sourceUrl: string, fetchedAt: string, period: Record<string, 
     windKmh: bounded(finiteNumber(period.vento, 'vento'), 'vento', 0, MAX_WIND_KMH),
     windDirection: validDirection(period.vento_dir, 'vento_dir'),
   };
-  return createEstimatedForecast(value, { ...metadata(sourceUrl, fetchedAt), validAt, validDate: null });
+  return createEstimatedForecast(value, { ...metadata(sourceUrl, fetchedAt, issuedDate), validAt, validDate: null });
 }
 
 function validateWaveCity(root: Record<string, unknown>, location: CptecLocationMapping): void {
   if (requiredString(root.nome, 'nome') !== location.name || requiredString(root.uf, 'uf') !== location.stateCode) {
-    throw new CptecCoverageUnavailableError();
+    invalid('location_mismatch', 'CPTEC response location does not match the mapped location');
   }
 }
 
@@ -328,41 +434,39 @@ export async function fetchDailyWaves(
   day: 0 | 1 | 2 = 0,
 ): Promise<EstimatedForecast<WavePeriod>[]> {
   if (day !== 0 && day !== 1 && day !== 2) {
-    throw new HttpInvalidResponseError('CPTEC wave day must be 0, 1, or 2');
+    return invalid('semantic_validation', 'CPTEC wave day must be 0, 1, or 2');
   }
-  const url = forecastUrl(location, `dia/${day}/ondas.xml`);
+  const url = forecastUrl(location, `{id}/dia/${day}/ondas.xml`);
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
-  validDateOnly(root.atualizacao, 'atualizacao');
+  const issuedDate = validDailyWaveUpdateDate(root.atualizacao);
   const periodsByName = ['manha', 'tarde', 'noite'].map((key) => ({
     key,
     periods: asArray(root[key] as Record<string, unknown> | Record<string, unknown>[] | undefined),
   }));
   if (periodsByName.some(({ periods }) => periods.length !== 1)) {
-    throw new HttpInvalidResponseError('CPTEC daily wave response has an invalid period count');
+    return invalid('record_count', 'CPTEC daily wave response has an invalid period count');
   }
   const periods = periodsByName.map(({ periods }) => periods[0]);
   const timestamps = periods.map((period) => validWaveTimestamp(period.dia));
   if (new Set(timestamps).size !== timestamps.length) {
-    throw new HttpInvalidResponseError('CPTEC daily wave response contains duplicate timestamps');
+    return invalid('duplicate_validity', 'CPTEC daily wave response contains duplicate timestamps');
   }
-  return periods.map((period) => parseWave(url, fetchedAt, period));
+  return periods.map((period) => parseWave(url, fetchedAt, issuedDate, period));
 }
 
 export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<EstimatedForecast<WavePeriod>[]> {
-  const url = forecastUrl(location, 'todos/tempos/ondas.xml');
+  const url = forecastUrl(location, '{id}/todos/tempos/ondas.xml');
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
-  validDateOnly(root.atualizacao, 'atualizacao');
+  const issuedDate = validIsoDateOnly(root.atualizacao, 'atualizacao');
   const periods = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
-  if (periods.length !== 48) {
-    throw new HttpInvalidResponseError('CPTEC six-day wave response has an invalid period count');
+  if (periods.length < 40 || periods.length > 48) {
+    return invalid('record_count', 'CPTEC six-day wave response has an invalid period count');
   }
-  const timestamps = periods.map((period) => validWaveTimestamp(period.dia));
-  if (new Set(timestamps).size !== timestamps.length) {
-    throw new HttpInvalidResponseError('CPTEC six-day wave response contains duplicate timestamps');
-  }
-  return periods.map((period) => parseWave(url, fetchedAt, period));
+  const timestamps = periods.map((period) => validSixDayTimestamp(period.dia));
+  validateSixDayTimestamps(timestamps, fetchedAt);
+  return periods.map((period) => parseWave(url, fetchedAt, issuedDate, period));
 }

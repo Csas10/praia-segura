@@ -94,4 +94,24 @@ describe('/api/locations/search rate limit', () => {
       error: 'Muitas buscas foram realizadas em pouco tempo. Aguarde e tente novamente.',
     });
   }, 20000);
+
+  it('applies the same JSON rate limit contract to CPTEC forecasts', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: Parameters<typeof fetch>[1]) => {
+      if (url.startsWith('http://127.0.0.1')) return realFetch(url, init);
+      throw new Error('upstream unavailable');
+    }));
+
+    let limitedResponse: Response | undefined;
+    for (let i = 0; i < 25; i += 1) {
+      const response = await fetch(`${baseUrl}/api/forecasts?ibgeId=2927408&product=weather-7d`);
+      if (response.status === 429) limitedResponse = response;
+    }
+
+    expect(limitedResponse).toBeDefined();
+    expect(limitedResponse?.headers.get('content-type')).toMatch(/application\/json/i);
+    expect(limitedResponse?.headers.get('ratelimit-limit')).toBe('20');
+    expect(limitedResponse?.headers.get('retry-after')).toBeTruthy();
+    expect(limitedResponse?.headers.get('cache-control')).toBe('no-store');
+    await expect(limitedResponse?.json()).resolves.toMatchObject({ ok: false });
+  }, 20000);
 });
