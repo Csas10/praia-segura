@@ -411,6 +411,26 @@ inventado; `issuedAt` permanece nulo nesses casos. O endpoint não altera fronte
 índices de risco. A previsão não é medição em tempo real nem certificação de praia segura;
 salva-vidas, sinalização e autoridades prevalecem.
 
+#### Re-homologação 2.2D-R1
+
+Os formatos de `atualizacao` são validados por produto: `weather-7d` e `waves-6d`
+exigem `YYYY-MM-DD`; `waves-daily` exige `DD-MM-YYYY` e normaliza o resultado para
+`issuedDate` em `YYYY-MM-DD`. Nenhum produto converte essa data em horário, timezone ou
+`issuedAt`. Datas inexistentes, nulas ou em formato invertido são rejeitadas.
+
+Falhas de resposta inválida mantêm o motivo público `invalid_response`, mas carregam
+internamente somente uma etapa sanitizada entre `content_type`, `charset`,
+`encoding_declaration`, `response_size`, `xml_syntax`, `root_missing`, `location_mismatch`,
+`update_date`, `record_count`, `duplicate_validity`, `field_missing`, `field_range` e
+`semantic_validation`. Esses subcódigos não são expostos no DTO, nem incluem XML, URL,
+stack trace ou mensagem bruta.
+
+A matriz real reduzida de re-homologação confirmou a indisponibilidade atual do provedor:
+meteorologia falhou como `invalid_response` e ondas como `upstream_http`. Não houve `200
+estimated` real para os três produtos, portanto o gate operacional permanece pendente e o
+PR deve continuar Draft até nova evidência. Nenhum ajuste de parser enfraquece charset,
+XML, cardinalidade ou validação semântica para obter HTTP 200.
+
 #### Fontes pendentes
 
 - INMET;

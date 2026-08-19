@@ -55,7 +55,7 @@ describe('CPTEC client', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>2026-08-18</atualizacao><manha>${period('12')}</manha><tarde>${period('18')}</tarde><noite>${period('21')}</noite></cidade>`),
+        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>18-08-2026</atualizacao><manha>${period('12')}</manha><tarde>${period('18')}</tarde><noite>${period('21')}</noite></cidade>`),
       ),
     );
 
@@ -63,7 +63,23 @@ describe('CPTEC client', () => {
     expect(result).toHaveLength(3);
     expect(result[0].validAt).toBe('2026-08-18T12:00:00.000Z');
     expect(result[0].validDate).toBeNull();
+    expect(result[0].issuedAt).toBeNull();
+    expect(result[0].issuedDate).toBe('2026-08-18');
     expect(result[0].value?.waveHeightMeters).toBe(2.3);
+  });
+
+  it.each([
+    ['31-02-2026', 'update_date'],
+    ['2026-08-18', 'update_date'],
+    ['null', 'field_missing'],
+  ])('rejects invalid daily wave update date %s', async (updateDate, stage) => {
+    const period = (time: string) => `<dia>18-08-2026 ${time}h Z</dia><agitacao>Moderado</agitacao><altura>2.3</altura><direcao>SE</direcao><vento>8.7</vento><vento_dir>SE</vento_dir>`;
+    const xml = `${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>${updateDate}</atualizacao><manha>${period('12')}</manha><tarde>${period('18')}</tarde><noite>${period('21')}</noite></cidade>`;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(xml)));
+    await expect(fetchDailyWaves(location)).rejects.toMatchObject({
+      name: 'CptecInvalidResponseError',
+      stage,
+    });
   });
 
   it('requires the full six-day wave schedule', async () => {
@@ -104,7 +120,7 @@ describe('CPTEC client', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>2026-08-18</atualizacao><manha>${period}</manha><tarde>${period}</tarde></cidade>`),
+        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>18-08-2026</atualizacao><manha>${period}</manha><tarde>${period}</tarde></cidade>`),
       ),
     );
     await expect(fetchDailyWaves(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
@@ -115,7 +131,7 @@ describe('CPTEC client', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>2026-08-18</atualizacao><manha>${period}</manha><tarde>${period.replace('12h', '18h')}</tarde><noite>${period.replace('12h', '21h')}</noite></cidade>`),
+        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>18-08-2026</atualizacao><manha>${period}</manha><tarde>${period.replace('12h', '18h')}</tarde><noite>${period.replace('12h', '21h')}</noite></cidade>`),
       ),
     );
     await expect(fetchDailyWaves(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
@@ -126,7 +142,7 @@ describe('CPTEC client', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>2026-08-18</atualizacao><manha>${period}</manha><tarde>${period}</tarde><noite>${period}</noite></cidade>`),
+        response(`${header}<cidade><nome>Ilhéus</nome><uf>BA</uf><atualizacao>18-08-2026</atualizacao><manha>${period}</manha><tarde>${period}</tarde><noite>${period}</noite></cidade>`),
       ),
     );
     await expect(fetchDailyWaves(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
@@ -145,12 +161,18 @@ describe('CPTEC client', () => {
 
   it('rejects a non-XML content type', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(`${header}<cidade></cidade>`, 'text/html')));
-    await expect(fetchWeather7Days(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
+    await expect(fetchWeather7Days(location)).rejects.toMatchObject({
+      name: 'CptecInvalidResponseError',
+      stage: 'content_type',
+    });
   });
 
   it('rejects a charset that conflicts with the XML declaration', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(weatherXml(), 'text/xml;charset=UTF-8')));
-    await expect(fetchWeather7Days(location)).rejects.toBeInstanceOf(HttpInvalidResponseError);
+    await expect(fetchWeather7Days(location)).rejects.toMatchObject({
+      name: 'CptecInvalidResponseError',
+      stage: 'charset',
+    });
   });
 
   it('keeps forecast quality and value invariants discriminated', () => {
