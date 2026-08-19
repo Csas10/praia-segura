@@ -1,8 +1,9 @@
 import type { Request, Response } from 'express';
-import { ForecastCache } from '../../cache/forecast-cache';
+import { ForecastCache, FORECAST_CACHE_POLICY } from '../../cache/forecast-cache';
 import { toPublicForecast } from '../../domain/public-forecast';
 import type { ForecastProduct, ForecastValue } from '../../domain/public-forecast';
 import {
+  createUnavailableForecastResult,
   fetchDailyWaveForecastByIbge,
   fetchSixDayWaveForecastByIbge,
   fetchWeatherForecastByIbge,
@@ -37,12 +38,21 @@ export default async function GET(req: Request, res: Response): Promise<void> {
   }
 
   const location = HOMOLOGATED_LOCATIONS.find((item) => item.ibgeCode === ibgeId);
+  if (!location) {
+    const result = createUnavailableForecastResult<ForecastValue>('mapping_not_homologated');
+    if (result.ok) throw new Error('Unavailable forecast factory returned an estimated result');
+    res.status(404).set('Cache-Control', 'no-store').json({
+      ok: false,
+      forecast: toPublicForecast(result.forecast),
+    });
+    return;
+  }
   const loader = product === 'weather-7d'
     ? () => fetchWeatherForecastByIbge(ibgeId)
     : product === 'waves-daily'
       ? () => fetchDailyWaveForecastByIbge(ibgeId)
       : () => fetchSixDayWaveForecastByIbge(ibgeId);
-  const cacheKey = `${product}:${location?.cptecCode ?? ibgeId}`;
+  const cacheKey = `${product}:${location.cptecCode}`;
   const cached = await cache.get<ForecastValue>(cacheKey, product, loader);
 
   if (!cached.result.ok) {
@@ -55,12 +65,7 @@ export default async function GET(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  if (!location) {
-    res.status(404).set('Cache-Control', 'no-store').json({ ok: false, error: 'Município sem cobertura homologada.' });
-    return;
-  }
-
-  const policy = cachePolicy(product);
+  const policy = FORECAST_CACHE_POLICY[product];
   res.status(200).set(
     'Cache-Control',
     cached.status === 'stale'
@@ -77,12 +82,10 @@ export default async function GET(req: Request, res: Response): Promise<void> {
   });
 }
 
-function cachePolicy(product: ForecastProduct) {
-  return product === 'waves-daily'
-    ? { freshTtlSeconds: 3_600, staleIfErrorSeconds: 10_800 }
-    : { freshTtlSeconds: 10_800, staleIfErrorSeconds: 21_600 };
-}
-
 export function clearForecastCache(): void {
   cache.clear();
+}
+
+export function forecastCacheSizeForTests(): number {
+  return cache.sizeForTests();
 }

@@ -307,6 +307,7 @@ interface Forecast<T> {
   source: 'CPTEC/INPE';
   sourceUrl: string;
   issuedAt: string | null;
+  issuedDate: string | null;
   validAt: string | null;
   validDate: string | null;
   fetchedAt: string;
@@ -316,10 +317,12 @@ interface Forecast<T> {
 }
 ```
 
-`issuedAt` poderá ser `null` quando o CPTEC informar somente a data. `validAt` será usado para
+`issuedAt` poderá ser `null` quando o CPTEC informar um timestamp; `issuedDate` será usado quando
+o CPTEC informar somente a data de atualização. `validAt` será usado para
 timestamps com timezone, como o horário UTC/Zulu das ondas. `validDate` será usado para datas
 sem horário ou timezone, como a meteorologia diária. Para meteorologia diária, a data não será
 convertida artificialmente em meia-noite UTC. `validAt` e `validDate` nunca coexistirão.
+`issuedAt` e `issuedDate` nunca coexistirão.
 `expiresAt` será uma política do Minha Praia Segura, não necessariamente um campo fornecido pelo
 CPTEC. `stale` será calculado a partir da validade e do momento atual. `coverage` deverá
 informar “município/localidade costeira”, sem afirmar cobertura de uma praia específica.
@@ -332,12 +335,11 @@ inferências sobre corrente de retorno ou segurança para banho.
 
 #### Termos e status jurídico
 
-A homologação técnica e sua documentação pública são permitidas. A exibição operacional dos
-dados CPTEC/INPE no site permanece condicionada à confirmação dos termos aplicáveis. Uso
-comercial ou reprodução em meios de divulgação exige autorização expressa, e toda utilização
-deve atribuir a fonte como “CPTEC/INPE”. Recomenda-se obter manifestação escrita antes da
-publicação operacional; esta homologação não autoriza ainda exibição no frontend nem exposição
-por rota pública.
+A homologação técnica, sua documentação pública e a divulgação operacional foram autorizadas por
+manifestação escrita do CPTEC/INPE. Uso comercial ou reprodução em meios de divulgação exige
+autorização expressa, e toda utilização deve atribuir a fonte como “CPTEC/INPE”. Nenhuma
+correspondência, nome, e-mail ou anexo privado é publicado, e a autorização não é apresentada
+como endosso institucional ao Minha Praia Segura.
 
 ### 2.2B — Fundação interna CPTEC/INPE (implementada, sem integração pública)
 
@@ -391,8 +393,9 @@ O cache é em memória por processo/instância, sem Redis, banco ou Vercel KV. H
 por chave, formada pelo produto e pelo código CPTEC homologado. Os TTLs frescos são 10.800 s
 para meteorologia e ondas de seis dias, e 3.600 s para ondas diárias. As janelas stale
 adicionais são respectivamente 21.600 s e 10.800 s; falhas são armazenadas negativamente por
-no máximo 60 s. Previsão antiga só é preservada após tentativa de atualização e enquanto sua
-validade meteorológica e a janela stale permitirem.
+no máximo 60 s. Após falha de atualização, `nextRefreshAt` aplica backoff de 60 s sem
+substituir a última previsão válida. Previsão antiga só é preservada após tentativa de atualização
+e enquanto sua validade meteorológica e a janela stale permitirem.
 
 O DTO público não expõe código CPTEC, URL XML, mensagem bruta, stack trace ou chave de cache.
 Ele usa a página institucional pública do CPTEC/INPE como fonte, preserva `estimated` para
@@ -402,7 +405,9 @@ frescas usam `s-maxage=300` e `stale-while-revalidate=60`; fallback stale usa `n
 upstream sem fallback retornam 503 com `Retry-After: 60`, e o limite é de 20 requisições por
 minuto/IP com resposta JSON 429.
 
-O endpoint não altera frontend, DNS, Vercel, `ENABLE_AGENTS`, agentes, geolocalização ou
+As datas CPTEC `atualizacao` são preservadas como `issuedDate`, sem horário ou timezone
+inventado; `issuedAt` permanece nulo nesses casos. O endpoint não altera frontend, DNS, Vercel,
+`ENABLE_AGENTS`, agentes, geolocalização ou
 índices de risco. A previsão não é medição em tempo real nem certificação de praia segura;
 salva-vidas, sinalização e autoridades prevalecem.
 

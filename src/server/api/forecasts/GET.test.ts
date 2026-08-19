@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Request, Response } from 'express';
 import { HttpInvalidResponseError, HttpTimeoutError } from '../../http/fetch-with-timeout';
-import { clearForecastCache, default as GET } from './GET';
+import { clearForecastCache, default as GET, forecastCacheSizeForTests } from './GET';
+import { FORECAST_CACHE_POLICY } from '../../cache/forecast-cache';
 import * as service from '../../services/cptec-forecast';
 
 const forecast = {
@@ -10,6 +11,7 @@ const forecast = {
   source: 'CPTEC/INPE' as const,
   sourceUrl: 'https://servicos.cptec.inpe.br/XML/cidade/7dias/242/previsao.xml',
   issuedAt: null,
+  issuedDate: '2026-08-18',
   validAt: null,
   validDate: '2026-08-19',
   fetchedAt: '2026-08-18T23:00:00.000Z',
@@ -31,6 +33,7 @@ const waveForecast = {
   source: 'CPTEC/INPE' as const,
   sourceUrl: 'https://servicos.cptec.inpe.br/XML/cidade/dia/0/ondas.xml',
   issuedAt: null,
+  issuedDate: '2026-08-18',
   validAt: '2026-08-18T12:00:00.000Z',
   validDate: null,
   fetchedAt: '2026-08-18T23:00:00.000Z',
@@ -72,7 +75,7 @@ describe('GET /api/forecasts', () => {
       product: 'weather-7d',
       location: { ibgeId: '2927408', name: 'Salvador', state: 'BA' },
       forecast: [{ sourceUrl: 'https://www.cptec.inpe.br/' }],
-      cache: { status: 'miss', freshTtlSeconds: 10_800, staleIfErrorSeconds: 21_600 },
+      cache: { status: 'miss', ...FORECAST_CACHE_POLICY['weather-7d'] },
     });
     expect(JSON.stringify(res.body)).not.toContain('servicos.cptec.inpe.br');
   });
@@ -100,10 +103,14 @@ describe('GET /api/forecasts', () => {
     expect(res.status).toHaveBeenCalledWith(Number(status));
   });
 
-  it('returns 404 for an unmapped municipality', async () => {
+  it.each(['1234567', '7654321', '0000000'])('returns 404 without caching or calling CPTEC for %s', async (ibgeId) => {
+    const load = vi.spyOn(service, 'fetchWeatherForecastByIbge');
     const res = response();
-    await GET(request({ ibgeId: '1234567', product: 'weather-7d' }), res);
+    await GET(request({ ibgeId, product: 'weather-7d' }), res);
     expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.body).toMatchObject({ ok: false, forecast: { value: null, quality: 'unavailable' } });
+    expect(load).not.toHaveBeenCalled();
+    expect(forecastCacheSizeForTests()).toBe(0);
   });
 
   it.each([
@@ -119,6 +126,7 @@ describe('GET /api/forecasts', () => {
         source: 'CPTEC/INPE',
         sourceUrl: 'about:blank',
         issuedAt: null,
+        issuedDate: null,
         validAt: null,
         validDate: null,
         fetchedAt: '2026-08-18T23:00:00.000Z',

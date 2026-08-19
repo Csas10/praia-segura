@@ -46,6 +46,8 @@ describe('CPTEC client', () => {
     expect(result[0].quality).toBe('estimated');
     expect(result[0].validDate).toBe('2026-08-19');
     expect(result[0].validAt).toBeNull();
+    expect(result[0].issuedAt).toBeNull();
+    expect(result[0].issuedDate).toBe('2026-08-18');
   });
 
   it('parses daily waves with UTC timestamps and metric units', async () => {
@@ -156,6 +158,7 @@ describe('CPTEC client', () => {
       source: 'CPTEC/INPE' as const,
       sourceUrl: 'https://servicos.cptec.inpe.br/XML/test',
       issuedAt: null,
+      issuedDate: null,
       validAt: null,
       validDate: '2026-08-18',
       fetchedAt: '2026-08-18T00:00:00.000Z',
@@ -166,6 +169,11 @@ describe('CPTEC client', () => {
     expect(createEstimatedForecast({ date: '2026-08-18' }, metadata).quality).toBe('estimated');
     expect(() => createEstimatedForecast(null, metadata)).toThrow();
     expect(() => createEstimatedForecast({ date: '2026-08-18' }, { ...metadata, validAt: metadata.validDate })).toThrow();
+    expect(() => createEstimatedForecast({ date: '2026-08-18' }, {
+      ...metadata,
+      issuedAt: '2026-08-18T00:00:00.000Z',
+      issuedDate: '2026-08-18',
+    })).toThrow();
   });
 
   it('normalizes an aborted request as a timeout', async () => {

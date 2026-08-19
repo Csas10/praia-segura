@@ -1,4 +1,5 @@
 import type { Forecast } from '../domain/forecast';
+import type { UnavailableForecast } from '../domain/forecast-result';
 import type { ForecastFailureReason, ForecastServiceResult } from '../domain/forecast-result';
 import type { ForecastProduct } from '../domain/public-forecast';
 
@@ -14,9 +15,12 @@ export const FORECAST_CACHE_POLICY: Record<ForecastProduct, {
 const NEGATIVE_CACHE_SECONDS = 60;
 
 interface CacheEntry<T> {
-  result: ForecastServiceResult<T>;
-  expiresAtMs: number;
+  forecasts: Extract<Forecast<T>, { quality: 'estimated' }>[] | null;
+  failure: UnavailableForecast<T> | null;
+  failureReason: ForecastFailureReason | null;
+  freshUntilMs: number;
   staleUntilMs: number;
+  nextRefreshAtMs: number;
 }
 
 export interface ForecastCacheResult<T> {
@@ -59,8 +63,18 @@ export class ForecastCache {
     const policy = FORECAST_CACHE_POLICY[product];
     const existing = this.entries.get(key) as CacheEntry<T> | undefined;
 
-    if (existing && nowMs <= existing.expiresAtMs) {
-      return { result: existing.result, status: 'hit' };
+    if (existing?.forecasts && nowMs <= existing.freshUntilMs) {
+      return { result: withCacheMetadata(existing.forecasts, new Date(existing.freshUntilMs).toISOString(), false), status: 'hit' };
+    }
+    if (existing?.forecasts && nowMs < existing.staleUntilMs && nowMs < existing.nextRefreshAtMs
+      && !forecastValidityEnded(existing.forecasts, nowMs)) {
+      return {
+        result: withCacheMetadata(existing.forecasts, new Date(existing.freshUntilMs).toISOString(), true),
+        status: 'stale',
+      };
+    }
+    if (!existing?.forecasts && existing?.failure && nowMs < existing.nextRefreshAtMs) {
+      return { result: { ok: false, forecast: existing.failure, reason: existing.failureReason ?? 'invalid_response' }, status: 'hit' };
     }
 
     const pending = this.inFlight.get(key);
@@ -80,6 +94,10 @@ export class ForecastCache {
     this.inFlight.clear();
   }
 
+  sizeForTests(): number {
+    return this.entries.size;
+  }
+
   private async refresh<T>(
     key: string,
     freshTtlSeconds: number,
@@ -92,25 +110,36 @@ export class ForecastCache {
 
     if (loaded.ok) {
       const fetchedAtMs = Date.parse(loaded.forecasts[0]?.fetchedAt ?? '');
-      const expiresAtMs = (Number.isFinite(fetchedAtMs) ? fetchedAtMs : nowMs) + freshTtlSeconds * 1000;
-      const result = withCacheMetadata(loaded.forecasts, new Date(expiresAtMs).toISOString(), false);
+      const freshUntilMs = (Number.isFinite(fetchedAtMs) ? fetchedAtMs : nowMs) + freshTtlSeconds * 1000;
       this.entries.set(key, {
-        result,
-        expiresAtMs,
-        staleUntilMs: expiresAtMs + staleIfErrorSeconds * 1000,
+        forecasts: loaded.forecasts,
+        failure: null,
+        failureReason: null,
+        freshUntilMs,
+        staleUntilMs: freshUntilMs + staleIfErrorSeconds * 1000,
+        nextRefreshAtMs: freshUntilMs,
       });
-      return { result, status: 'miss' };
+      return {
+        result: withCacheMetadata(loaded.forecasts, new Date(freshUntilMs).toISOString(), false),
+        status: 'miss',
+      };
     }
 
-    if (existing?.result.ok && nowMs <= existing.staleUntilMs && !forecastValidityEnded(existing.result.forecasts, nowMs)) {
-      const staleResult = withCacheMetadata(existing.result.forecasts, new Date(existing.expiresAtMs).toISOString(), true);
+    if (existing?.forecasts && nowMs < existing.staleUntilMs && !forecastValidityEnded(existing.forecasts, nowMs)) {
+      existing.nextRefreshAtMs = nowMs + NEGATIVE_CACHE_SECONDS * 1000;
+      existing.failure = loaded.forecast;
+      existing.failureReason = loaded.reason;
+      const staleResult = withCacheMetadata(existing.forecasts, new Date(existing.freshUntilMs).toISOString(), true);
       return { result: staleResult, status: 'stale' };
     }
 
     this.entries.set(key, {
-      result: loaded,
-      expiresAtMs: nowMs + NEGATIVE_CACHE_SECONDS * 1000,
-      staleUntilMs: nowMs + NEGATIVE_CACHE_SECONDS * 1000,
+      forecasts: null,
+      failure: loaded.forecast,
+      failureReason: loaded.reason,
+      freshUntilMs: 0,
+      staleUntilMs: 0,
+      nextRefreshAtMs: nowMs + NEGATIVE_CACHE_SECONDS * 1000,
     });
     return { result: loaded, status: 'miss' };
   }

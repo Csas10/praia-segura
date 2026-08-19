@@ -12,6 +12,7 @@ function success(fetchedAt: string): ForecastServiceResult<WeatherDay> {
       source: 'CPTEC/INPE',
       sourceUrl: 'https://internal.example/cptec.xml',
       issuedAt: null,
+      issuedDate: '2026-08-18',
       validAt: null,
       validDate: '2026-08-19',
       fetchedAt,
@@ -32,6 +33,7 @@ function unavailable(fetchedAt: string): ForecastServiceResult<WeatherDay> {
       source: 'CPTEC/INPE',
       sourceUrl: 'about:blank',
       issuedAt: null,
+      issuedDate: null,
       validAt: null,
       validDate: null,
       fetchedAt,
@@ -83,6 +85,46 @@ describe('ForecastCache', () => {
 
     expect(stale.status).toBe('stale');
     expect(stale.result.ok && stale.result.forecasts[0].stale).toBe(true);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('backs off stale refreshes for 60 seconds and then recovers', async () => {
+    let now = Date.parse('2026-08-18T00:00:00.000Z');
+    const cache = new ForecastCache(() => now);
+    const load = vi.fn()
+      .mockResolvedValueOnce(success(new Date(now).toISOString()))
+      .mockResolvedValueOnce(unavailable(new Date(now).toISOString()))
+      .mockResolvedValueOnce(success(new Date(now).toISOString()));
+
+    await cache.get('weather:242', 'weather-7d', load);
+    now += (FORECAST_CACHE_POLICY['weather-7d'].freshTtlSeconds + 1) * 1000;
+    const firstStale = await cache.get('weather:242', 'weather-7d', load);
+    const secondStale = await cache.get('weather:242', 'weather-7d', load);
+    expect(firstStale.status).toBe('stale');
+    expect(secondStale.status).toBe('stale');
+    expect(load).toHaveBeenCalledTimes(2);
+
+    now += 60_001;
+    const recovered = await cache.get('weather:242', 'weather-7d', load);
+    expect(recovered.status).toBe('miss');
+    expect(recovered.result.ok && recovered.result.forecasts[0].stale).toBe(false);
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it('single-flights the refresh after stale backoff expires', async () => {
+    let now = Date.parse('2026-08-18T00:00:00.000Z');
+    const cache = new ForecastCache(() => now);
+    let resolve: ((result: ForecastServiceResult<WeatherDay>) => void) | undefined;
+    const load = vi.fn()
+      .mockResolvedValueOnce(success(new Date(now).toISOString()))
+      .mockResolvedValueOnce(new Promise<ForecastServiceResult<WeatherDay>>((done) => { resolve = done; }));
+
+    await cache.get('weather:242', 'weather-7d', load);
+    now += (FORECAST_CACHE_POLICY['weather-7d'].freshTtlSeconds + 60_001) * 1000;
+    const first = cache.get('weather:242', 'weather-7d', load);
+    const second = cache.get('weather:242', 'weather-7d', load);
+    resolve?.(unavailable(new Date(now).toISOString()));
+    await Promise.all([first, second]);
     expect(load).toHaveBeenCalledTimes(2);
   });
 

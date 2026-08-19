@@ -13,11 +13,14 @@ import { HttpInvalidResponseError, HttpStatusError, HttpTimeoutError } from '../
 const SAFE_SOURCE_URL = 'about:blank';
 const COVERAGE = 'município/localidade costeira';
 
-function unavailable<T>(reason: Exclude<ForecastServiceResult<T>, { ok: true }>['reason']): ForecastServiceResult<T> {
+export function createUnavailableForecastResult<T>(
+  reason: Exclude<ForecastServiceResult<T>, { ok: true }>['reason'],
+): ForecastServiceResult<T> {
   const forecast = createUnavailableForecast<T>({
     source: 'CPTEC/INPE',
     sourceUrl: SAFE_SOURCE_URL,
     issuedAt: null,
+    issuedDate: null,
     validAt: null,
     validDate: null,
     fetchedAt: new Date().toISOString(),
@@ -45,12 +48,12 @@ async function run<T>(
   load: (location: (typeof HOMOLOGATED_LOCATIONS)[number]) => Promise<EstimatedForecast<T>[]>,
 ): Promise<ForecastServiceResult<T>> {
   const location = resolveLocation(ibgeCode);
-  if (!location) return unavailable('mapping_not_homologated');
+  if (!location) return createUnavailableForecastResult('mapping_not_homologated');
 
   try {
     return { ok: true, forecasts: await load(location) };
   } catch (error) {
-    return unavailable(failureReason(error));
+    return createUnavailableForecastResult(failureReason(error));
   }
 }
 

@@ -4,6 +4,7 @@ interface ForecastMetadata {
   source: 'CPTEC/INPE';
   sourceUrl: string;
   issuedAt: string | null;
+  issuedDate: string | null;
   validAt: string | null;
   validDate: string | null;
   fetchedAt: string;
@@ -23,6 +24,9 @@ export function createEstimatedForecast<T>(
   if (value === null) {
     throw new Error('An estimated forecast must contain a non-null value');
   }
+  if (metadata.issuedAt !== null && metadata.issuedDate !== null) {
+    throw new Error('A forecast cannot contain both issuedAt and issuedDate');
+  }
   if (metadata.validAt !== null && metadata.validDate !== null) {
     throw new Error('A forecast cannot contain both validAt and validDate');
   }
@@ -32,6 +36,9 @@ export function createEstimatedForecast<T>(
 export function createUnavailableForecast<T>(
   metadata: ForecastMetadata,
 ): Extract<Forecast<T>, { quality: 'unavailable' }> {
+  if (metadata.issuedAt !== null && metadata.issuedDate !== null) {
+    throw new Error('A forecast cannot contain both issuedAt and issuedDate');
+  }
   if (metadata.validAt !== null && metadata.validDate !== null) {
     throw new Error('A forecast cannot contain both validAt and validDate');
   }

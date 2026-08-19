@@ -180,11 +180,12 @@ function requireHomologatedLocation(location: CptecLocationMapping): void {
   }
 }
 
-function metadata(sourceUrl: string, fetchedAt: string) {
+function metadata(sourceUrl: string, fetchedAt: string, issuedDate: string) {
   return {
     source: SOURCE,
     sourceUrl,
     issuedAt: null,
+    issuedDate,
     fetchedAt,
     coverage: COVERAGE,
     expiresAt: null,
@@ -265,7 +266,7 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   const days = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
-  validDateOnly(root.atualizacao, 'atualizacao');
+  const issuedDate = validDateOnly(root.atualizacao, 'atualizacao');
   if (days.length !== 7) {
     throw new HttpInvalidResponseError('CPTEC weather response does not match the mapped location');
   }
@@ -300,11 +301,11 @@ export async function fetchWeather7Days(location: CptecLocationMapping): Promise
     if (value.uvIndex < 0 || value.minimumCelsius > value.maximumCelsius) {
       throw new HttpInvalidResponseError('CPTEC weather values are semantically invalid');
     }
-    return createEstimatedForecast(value, { ...metadata(url, fetchedAt), validAt: null, validDate: date });
+    return createEstimatedForecast(value, { ...metadata(url, fetchedAt, issuedDate), validAt: null, validDate: date });
   });
 }
 
-function parseWave(sourceUrl: string, fetchedAt: string, period: Record<string, unknown>) {
+function parseWave(sourceUrl: string, fetchedAt: string, issuedDate: string, period: Record<string, unknown>) {
   const validAt = validWaveTimestamp(period.dia);
   const value: WavePeriod = {
     validAt,
@@ -314,7 +315,7 @@ function parseWave(sourceUrl: string, fetchedAt: string, period: Record<string, 
     windKmh: bounded(finiteNumber(period.vento, 'vento'), 'vento', 0, MAX_WIND_KMH),
     windDirection: validDirection(period.vento_dir, 'vento_dir'),
   };
-  return createEstimatedForecast(value, { ...metadata(sourceUrl, fetchedAt), validAt, validDate: null });
+  return createEstimatedForecast(value, { ...metadata(sourceUrl, fetchedAt, issuedDate), validAt, validDate: null });
 }
 
 function validateWaveCity(root: Record<string, unknown>, location: CptecLocationMapping): void {
@@ -334,7 +335,7 @@ export async function fetchDailyWaves(
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
-  validDateOnly(root.atualizacao, 'atualizacao');
+  const issuedDate = validDateOnly(root.atualizacao, 'atualizacao');
   const periodsByName = ['manha', 'tarde', 'noite'].map((key) => ({
     key,
     periods: asArray(root[key] as Record<string, unknown> | Record<string, unknown>[] | undefined),
@@ -347,7 +348,7 @@ export async function fetchDailyWaves(
   if (new Set(timestamps).size !== timestamps.length) {
     throw new HttpInvalidResponseError('CPTEC daily wave response contains duplicate timestamps');
   }
-  return periods.map((period) => parseWave(url, fetchedAt, period));
+  return periods.map((period) => parseWave(url, fetchedAt, issuedDate, period));
 }
 
 export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<EstimatedForecast<WavePeriod>[]> {
@@ -355,7 +356,7 @@ export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<
   const { document, fetchedAt } = await fetchXml(url);
   const root = city(document);
   validateWaveCity(root, location);
-  validDateOnly(root.atualizacao, 'atualizacao');
+  const issuedDate = validDateOnly(root.atualizacao, 'atualizacao');
   const periods = asArray(root.previsao as Record<string, unknown> | Record<string, unknown>[] | undefined);
   if (periods.length !== 48) {
     throw new HttpInvalidResponseError('CPTEC six-day wave response has an invalid period count');
@@ -364,5 +365,5 @@ export async function fetchSixDayWaves(location: CptecLocationMapping): Promise<
   if (new Set(timestamps).size !== timestamps.length) {
     throw new HttpInvalidResponseError('CPTEC six-day wave response contains duplicate timestamps');
   }
-  return periods.map((period) => parseWave(url, fetchedAt, period));
+  return periods.map((period) => parseWave(url, fetchedAt, issuedDate, period));
 }
